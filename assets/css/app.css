@@ -1,0 +1,57 @@
+:root {
+  --sc-radius: 1rem;
+}
+
+body {
+  min-width: 320px;
+}
+
+.auth-bg {
+  background: linear-gradient(180deg, #f8f9fa 0%, #eef1f4 100%);
+}
+
+.brand-mark {
+  width: 56px;
+  height: 56px;
+  display: grid;
+  place-items: center;
+  border-radius: 16px;
+  background: #212529;
+  color: #fff;
+  font-weight: 800;
+  letter-spacing: .04em;
+}
+
+.form-control {
+  min-height: 46px;
+}
+
+.nav-pills .nav-link {
+  color: #495057;
+}
+
+.nav-pills .nav-link.active {
+  background: #212529;
+}
+
+.sidebar .nav-link {
+  color: #495057;
+  border-radius: .75rem;
+}
+
+.sidebar .nav-link.active {
+  background: #212529;
+  color: #fff;
+}
+
+.metric-card {
+  border-radius: var(--sc-radius);
+}
+
+.status-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  display: inline-block;
+  flex: 0 0 auto;
+}
