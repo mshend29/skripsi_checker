@@ -51,14 +51,9 @@
                       <label for="login-password" class="form-label">Password</label>
                       <div class="input-group input-group-lg">
                         <input id="login-password" type="password" class="form-control" required autocomplete="current-password">
-                        <button
-                          class="btn btn-outline-secondary password-toggle"
-                          type="button"
-                          data-password-toggle="login-password"
-                          aria-label="Tampilkan password"
-                          aria-pressed="false"
-                          title="Tampilkan password"
-                        >
+                        <button class="btn btn-outline-secondary password-toggle" type="button"
+                          data-password-toggle="login-password" aria-label="Tampilkan password"
+                          aria-pressed="false" title="Tampilkan password">
                           <i class="bi bi-eye" aria-hidden="true"></i>
                         </button>
                       </div>
@@ -89,14 +84,9 @@
                       <label for="register-password" class="form-label">Password</label>
                       <div class="input-group">
                         <input id="register-password" type="password" minlength="8" class="form-control" required autocomplete="new-password">
-                        <button
-                          class="btn btn-outline-secondary password-toggle"
-                          type="button"
-                          data-password-toggle="register-password"
-                          aria-label="Tampilkan password"
-                          aria-pressed="false"
-                          title="Tampilkan password"
-                        >
+                        <button class="btn btn-outline-secondary password-toggle" type="button"
+                          data-password-toggle="register-password" aria-label="Tampilkan password"
+                          aria-pressed="false" title="Tampilkan password">
                           <i class="bi bi-eye" aria-hidden="true"></i>
                         </button>
                       </div>
@@ -114,9 +104,14 @@
   </main>
 
   <main id="dashboard-screen" class="d-none min-vh-100 bg-body-tertiary">
-    <nav class="navbar navbar-expand-lg bg-white border-bottom sticky-top">
-      <div class="container-fluid px-4">
-        <a class="navbar-brand fw-bold" href="#">SkripsiCheck</a>
+    <nav class="navbar bg-white border-bottom sticky-top">
+      <div class="container-fluid px-3 px-lg-4">
+        <div class="d-flex align-items-center gap-2">
+          <button class="btn btn-outline-secondary d-lg-none" type="button" data-bs-toggle="offcanvas" data-bs-target="#mobileSidebar" aria-label="Buka menu">
+            <i class="bi bi-list"></i>
+          </button>
+          <a class="navbar-brand fw-bold mb-0" href="#" data-view-link="dashboard">SkripsiCheck</a>
+        </div>
         <div class="d-flex align-items-center gap-3">
           <div class="text-end d-none d-sm-block">
             <div id="profile-name" class="fw-semibold small">Dosen</div>
@@ -127,75 +122,153 @@
       </div>
     </nav>
 
+    <div class="offcanvas offcanvas-start" tabindex="-1" id="mobileSidebar">
+      <div class="offcanvas-header">
+        <h5 class="offcanvas-title fw-bold">SkripsiCheck</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="offcanvas"></button>
+      </div>
+      <div class="offcanvas-body">
+        <div class="nav flex-column nav-pills gap-1 app-nav">
+          <a class="nav-link active" href="#" data-view-link="dashboard"><i class="bi bi-grid me-2"></i>Dashboard</a>
+          <a class="nav-link" href="#" data-view-link="students"><i class="bi bi-people me-2"></i>Mahasiswa</a>
+          <a class="nav-link" href="#" data-coming-soon><i class="bi bi-journal-text me-2"></i>Skripsi</a>
+          <a class="nav-link" href="#" data-coming-soon><i class="bi bi-pencil-square me-2"></i>Review</a>
+          <a class="nav-link" href="#" data-coming-soon><i class="bi bi-chat-square-text me-2"></i>Bank Komentar</a>
+        </div>
+      </div>
+    </div>
+
     <div class="container-fluid">
       <div class="row">
         <aside class="col-lg-2 d-none d-lg-block sidebar bg-white border-end min-vh-100 p-3">
-          <div class="nav flex-column nav-pills gap-1">
-            <a class="nav-link active" href="#">Dashboard</a>
-            <a class="nav-link" href="#" data-coming-soon>Mahasiswa</a>
-            <a class="nav-link" href="#" data-coming-soon>Skripsi</a>
-            <a class="nav-link" href="#" data-coming-soon>Review</a>
-            <a class="nav-link" href="#" data-coming-soon>Bank Komentar</a>
+          <div class="nav flex-column nav-pills gap-1 app-nav">
+            <a class="nav-link active" href="#" data-view-link="dashboard"><i class="bi bi-grid me-2"></i>Dashboard</a>
+            <a class="nav-link" href="#" data-view-link="students"><i class="bi bi-people me-2"></i>Mahasiswa</a>
+            <a class="nav-link" href="#" data-coming-soon><i class="bi bi-journal-text me-2"></i>Skripsi</a>
+            <a class="nav-link" href="#" data-coming-soon><i class="bi bi-pencil-square me-2"></i>Review</a>
+            <a class="nav-link" href="#" data-coming-soon><i class="bi bi-chat-square-text me-2"></i>Bank Komentar</a>
           </div>
         </aside>
 
-        <section class="col-lg-10 p-4 p-xl-5">
-          <div class="d-flex flex-wrap justify-content-between align-items-center gap-3 mb-4">
-            <div>
-              <h2 class="h4 fw-bold mb-1">Dashboard</h2>
-              <p class="text-secondary mb-0">Ringkasan bimbingan skripsi Anda.</p>
+        <section class="col-lg-10 p-3 p-md-4 p-xl-5">
+          <div id="global-alert"></div>
+
+          <div id="view-dashboard" class="app-view">
+            <div class="d-flex flex-wrap justify-content-between align-items-center gap-3 mb-4">
+              <div>
+                <h2 class="h4 fw-bold mb-1">Dashboard</h2>
+                <p class="text-secondary mb-0">Ringkasan bimbingan skripsi Anda.</p>
+              </div>
+              <button class="btn btn-dark" data-add-student><i class="bi bi-person-plus me-1"></i> Tambah Mahasiswa</button>
             </div>
-            <button class="btn btn-dark" data-coming-soon>+ Tambah Mahasiswa</button>
+
+            <div class="row g-3 mb-4">
+              <div class="col-sm-6 col-xl-3">
+                <div class="card metric-card border-0 shadow-sm">
+                  <div class="card-body">
+                    <div class="text-secondary small">Mahasiswa Aktif</div>
+                    <div id="stat-students" class="display-6 fw-semibold">0</div>
+                  </div>
+                </div>
+              </div>
+              <div class="col-sm-6 col-xl-3">
+                <div class="card metric-card border-0 shadow-sm">
+                  <div class="card-body">
+                    <div class="text-secondary small">Skripsi Aktif</div>
+                    <div id="stat-theses" class="display-6 fw-semibold">0</div>
+                  </div>
+                </div>
+              </div>
+              <div class="col-sm-6 col-xl-3">
+                <div class="card metric-card border-0 shadow-sm">
+                  <div class="card-body">
+                    <div class="text-secondary small">Komentar Terbuka</div>
+                    <div id="stat-comments" class="display-6 fw-semibold">0</div>
+                  </div>
+                </div>
+              </div>
+              <div class="col-sm-6 col-xl-3">
+                <div class="card metric-card border-0 shadow-sm">
+                  <div class="card-body">
+                    <div class="text-secondary small">Temuan AI</div>
+                    <div id="stat-ai" class="display-6 fw-semibold">0</div>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <div class="card border-0 shadow-sm rounded-4">
+              <div class="card-body p-4">
+                <h3 class="h6 fw-bold">Status sistem</h3>
+                <div class="d-flex align-items-center gap-2 mt-3">
+                  <span class="status-dot bg-success"></span><span>Supabase Auth terhubung</span>
+                </div>
+                <div class="d-flex align-items-center gap-2 mt-2">
+                  <span class="status-dot bg-success"></span><span>Profil dosen menggunakan RLS</span>
+                </div>
+                <div class="d-flex align-items-center gap-2 mt-2">
+                  <span class="status-dot bg-success"></span><span>Dashboard membaca data milik dosen yang login</span>
+                </div>
+              </div>
+            </div>
           </div>
 
-          <div id="dashboard-alert"></div>
+          <div id="view-students" class="app-view d-none">
+            <div class="d-flex flex-wrap justify-content-between align-items-center gap-3 mb-4">
+              <div>
+                <h2 class="h4 fw-bold mb-1">Mahasiswa</h2>
+                <p class="text-secondary mb-0">Kelola mahasiswa bimbingan Anda.</p>
+              </div>
+              <button class="btn btn-dark" data-add-student><i class="bi bi-person-plus me-1"></i> Tambah Mahasiswa</button>
+            </div>
 
-          <div class="row g-3 mb-4">
-            <div class="col-sm-6 col-xl-3">
-              <div class="card metric-card border-0 shadow-sm">
-                <div class="card-body">
-                  <div class="text-secondary small">Mahasiswa Aktif</div>
-                  <div id="stat-students" class="display-6 fw-semibold">0</div>
+            <div class="card border-0 shadow-sm rounded-4">
+              <div class="card-body p-3 p-md-4">
+                <div class="row g-2 mb-3">
+                  <div class="col-md-7">
+                    <div class="input-group">
+                      <span class="input-group-text bg-white"><i class="bi bi-search"></i></span>
+                      <input id="student-search" type="search" class="form-control" placeholder="Cari nama, NIM, program studi…">
+                    </div>
+                  </div>
+                  <div class="col-md-3">
+                    <select id="student-status-filter" class="form-select">
+                      <option value="">Semua status</option>
+                      <option value="aktif">Aktif</option>
+                      <option value="lulus">Lulus</option>
+                      <option value="nonaktif">Nonaktif</option>
+                    </select>
+                  </div>
+                  <div class="col-md-2 d-grid">
+                    <button id="student-refresh" class="btn btn-outline-secondary"><i class="bi bi-arrow-clockwise me-1"></i>Refresh</button>
+                  </div>
                 </div>
-              </div>
-            </div>
-            <div class="col-sm-6 col-xl-3">
-              <div class="card metric-card border-0 shadow-sm">
-                <div class="card-body">
-                  <div class="text-secondary small">Skripsi Aktif</div>
-                  <div id="stat-theses" class="display-6 fw-semibold">0</div>
-                </div>
-              </div>
-            </div>
-            <div class="col-sm-6 col-xl-3">
-              <div class="card metric-card border-0 shadow-sm">
-                <div class="card-body">
-                  <div class="text-secondary small">Komentar Terbuka</div>
-                  <div id="stat-comments" class="display-6 fw-semibold">0</div>
-                </div>
-              </div>
-            </div>
-            <div class="col-sm-6 col-xl-3">
-              <div class="card metric-card border-0 shadow-sm">
-                <div class="card-body">
-                  <div class="text-secondary small">Temuan AI</div>
-                  <div id="stat-ai" class="display-6 fw-semibold">0</div>
-                </div>
-              </div>
-            </div>
-          </div>
 
-          <div class="card border-0 shadow-sm rounded-4">
-            <div class="card-body p-4">
-              <h3 class="h6 fw-bold">Status sistem</h3>
-              <div class="d-flex align-items-center gap-2 mt-3">
-                <span class="status-dot bg-success"></span><span>Supabase Auth terhubung</span>
-              </div>
-              <div class="d-flex align-items-center gap-2 mt-2">
-                <span class="status-dot bg-success"></span><span>Profil dosen menggunakan RLS</span>
-              </div>
-              <div class="d-flex align-items-center gap-2 mt-2">
-                <span class="status-dot bg-success"></span><span>Dashboard membaca data milik dosen yang login</span>
+                <div id="students-loading" class="text-center py-5 d-none">
+                  <div class="spinner-border spinner-border-sm me-2"></div>Memuat mahasiswa…
+                </div>
+
+                <div id="students-empty" class="empty-state py-5 text-center d-none">
+                  <div class="empty-icon mb-3"><i class="bi bi-people"></i></div>
+                  <h3 class="h6 fw-bold">Belum ada mahasiswa</h3>
+                  <p class="text-secondary mb-3">Tambahkan mahasiswa bimbingan pertama Anda.</p>
+                  <button class="btn btn-dark btn-sm" data-add-student>Tambah Mahasiswa</button>
+                </div>
+
+                <div id="students-table-wrap" class="table-responsive d-none">
+                  <table class="table align-middle mb-0">
+                    <thead>
+                      <tr>
+                        <th>Mahasiswa</th>
+                        <th>NIM</th>
+                        <th>Program Studi</th>
+                        <th>Status</th>
+                        <th class="text-end">Aksi</th>
+                      </tr>
+                    </thead>
+                    <tbody id="students-table-body"></tbody>
+                  </table>
+                </div>
               </div>
             </div>
           </div>
@@ -203,6 +276,128 @@
       </div>
     </div>
   </main>
+
+  <div class="modal fade" id="studentFormModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-lg modal-dialog-scrollable">
+      <div class="modal-content border-0 rounded-4">
+        <div class="modal-header">
+          <div>
+            <h5 id="student-form-title" class="modal-title fw-bold">Tambah Mahasiswa</h5>
+            <div class="text-secondary small">Data mahasiswa bimbingan.</div>
+          </div>
+          <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+        </div>
+        <form id="student-form">
+          <div class="modal-body">
+            <div id="student-form-alert"></div>
+            <input type="hidden" id="student-id">
+            <div class="row g-3">
+              <div class="col-md-5">
+                <label for="student-nim" class="form-label">NIM <span class="text-danger">*</span></label>
+                <input id="student-nim" type="text" class="form-control" required maxlength="50">
+              </div>
+              <div class="col-md-7">
+                <label for="student-name" class="form-label">Nama lengkap <span class="text-danger">*</span></label>
+                <input id="student-name" type="text" class="form-control" required maxlength="150">
+              </div>
+              <div class="col-md-6">
+                <label for="student-email" class="form-label">Email</label>
+                <input id="student-email" type="email" class="form-control" maxlength="150">
+              </div>
+              <div class="col-md-6">
+                <label for="student-phone" class="form-label">No. HP</label>
+                <input id="student-phone" type="tel" class="form-control" maxlength="30">
+              </div>
+              <div class="col-md-6">
+                <label for="student-study-program" class="form-label">Program Studi</label>
+                <input id="student-study-program" type="text" class="form-control" maxlength="150">
+              </div>
+              <div class="col-md-6">
+                <label for="student-faculty" class="form-label">Fakultas</label>
+                <input id="student-faculty" type="text" class="form-control" maxlength="150">
+              </div>
+              <div class="col-md-6">
+                <label for="student-year-entry" class="form-label">Tahun Masuk</label>
+                <input id="student-year-entry" type="number" min="1900" max="2200" class="form-control">
+              </div>
+              <div class="col-md-6">
+                <label for="student-status" class="form-label">Status</label>
+                <select id="student-status" class="form-select">
+                  <option value="aktif">Aktif</option>
+                  <option value="lulus">Lulus</option>
+                  <option value="nonaktif">Nonaktif</option>
+                </select>
+              </div>
+              <div class="col-12">
+                <label for="student-notes" class="form-label">Catatan</label>
+                <textarea id="student-notes" class="form-control" rows="3" placeholder="Catatan internal dosen…"></textarea>
+              </div>
+            </div>
+          </div>
+          <div class="modal-footer">
+            <button type="button" class="btn btn-light" data-bs-dismiss="modal">Batal</button>
+            <button id="student-save-button" type="submit" class="btn btn-dark">Simpan Mahasiswa</button>
+          </div>
+        </form>
+      </div>
+    </div>
+  </div>
+
+  <div class="modal fade" id="studentDetailModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-lg modal-dialog-scrollable">
+      <div class="modal-content border-0 rounded-4">
+        <div class="modal-header">
+          <div>
+            <h5 id="detail-student-name" class="modal-title fw-bold">Detail Mahasiswa</h5>
+            <div id="detail-student-nim" class="text-secondary small"></div>
+          </div>
+          <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+        </div>
+        <div class="modal-body">
+          <div class="row g-3 student-detail-grid">
+            <div class="col-md-6"><div class="detail-label">Email</div><div id="detail-student-email">-</div></div>
+            <div class="col-md-6"><div class="detail-label">No. HP</div><div id="detail-student-phone">-</div></div>
+            <div class="col-md-6"><div class="detail-label">Program Studi</div><div id="detail-student-study-program">-</div></div>
+            <div class="col-md-6"><div class="detail-label">Fakultas</div><div id="detail-student-faculty">-</div></div>
+            <div class="col-md-6"><div class="detail-label">Tahun Masuk</div><div id="detail-student-year-entry">-</div></div>
+            <div class="col-md-6"><div class="detail-label">Status</div><div id="detail-student-status">-</div></div>
+            <div class="col-12"><div class="detail-label">Catatan</div><div id="detail-student-notes" class="text-break">-</div></div>
+          </div>
+          <hr class="my-4">
+          <div class="d-flex justify-content-between align-items-center">
+            <div>
+              <h6 class="fw-bold mb-1">Skripsi</h6>
+              <p class="text-secondary small mb-0">Modul skripsi akan menjadi tahap berikutnya.</p>
+            </div>
+            <button class="btn btn-outline-dark btn-sm" data-coming-soon>Tambah Skripsi</button>
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button id="detail-edit-student" type="button" class="btn btn-outline-dark">Edit</button>
+          <button type="button" class="btn btn-light" data-bs-dismiss="modal">Tutup</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="modal fade" id="archiveStudentModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered">
+      <div class="modal-content border-0 rounded-4">
+        <div class="modal-header">
+          <h5 class="modal-title fw-bold">Arsipkan Mahasiswa</h5>
+          <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+        </div>
+        <div class="modal-body">
+          <p class="mb-1">Mahasiswa <strong id="archive-student-name"></strong> akan diarsipkan.</p>
+          <p class="text-secondary small mb-0">Data tidak dihapus permanen dan tetap aman di database.</p>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-light" data-bs-dismiss="modal">Batal</button>
+          <button id="archive-confirm-button" type="button" class="btn btn-danger">Arsipkan</button>
+        </div>
+      </div>
+    </div>
+  </div>
 
   <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.8/dist/js/bootstrap.bundle.min.js"></script>
   <script type="module" src="assets/js/app.js"></script>
