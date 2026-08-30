@@ -178,6 +178,61 @@ export function createReviewModule({
     await selectDocument(preferred.id);
   }
 
+
+  async function loadTrackedComments() {
+    const fields = 'id,thesis_id,version_id,paragraph_id,selected_text,comment_text,category,severity,status,source,created_at,resolved_at';
+
+    const [directResult, locationResult] = await Promise.all([
+      supabase
+        .from('comments')
+        .select(fields)
+        .eq('version_id', state.versionId)
+        .is('deleted_at', null)
+        .order('created_at', { ascending: false }),
+      supabase
+        .from('comment_revision_locations')
+        .select('comment_id,paragraph_id,change_type')
+        .eq('version_id', state.versionId),
+    ]);
+
+    if (directResult.error) throw directResult.error;
+    if (locationResult.error) throw locationResult.error;
+
+    const direct = directResult.data || [];
+    const locations = locationResult.data || [];
+    const directIds = new Set(direct.map((comment) => comment.id));
+
+    if (!locations.length) return direct;
+
+    const carriedIds = [...new Set(locations.map((location) => location.comment_id))]
+      .filter((id) => !directIds.has(id));
+
+    if (!carriedIds.length) return direct;
+
+    const carriedResult = await supabase
+      .from('comments')
+      .select(fields)
+      .in('id', carriedIds)
+      .is('deleted_at', null)
+      .order('created_at', { ascending: false });
+
+    if (carriedResult.error) throw carriedResult.error;
+
+    const locationByComment = new Map(locations.map((location) => [location.comment_id, location]));
+    const carried = (carriedResult.data || []).map((comment) => {
+      const location = locationByComment.get(comment.id);
+      return {
+        ...comment,
+        original_paragraph_id: comment.paragraph_id,
+        paragraph_id: location?.paragraph_id || null,
+        carried_from_previous_version: true,
+        revision_change_type: location?.change_type || null,
+      };
+    });
+
+    return [...direct, ...carried].sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
+  }
+
   async function selectDocument(documentId) {
     resetSelection();
     state.documentId = documentId;
@@ -194,7 +249,7 @@ export function createReviewModule({
     $('#review-document-content').innerHTML = '<div class="review-loading"><span class="spinner-border spinner-border-sm me-2"></span>Memuat paragraf…</div>';
     $('#review-comments').innerHTML = '<div class="review-loading"><span class="spinner-border spinner-border-sm me-2"></span>Memuat komentar…</div>';
 
-    const [versionResult, sectionsResult, paragraphsResult, commentsResult] = await Promise.all([
+    const [versionResult, sectionsResult, paragraphsResult] = await Promise.all([
       supabase
         .from('document_versions')
         .select('id,version_number,file_name,file_type,file_size,word_count,review_status,uploaded_at')
@@ -211,15 +266,9 @@ export function createReviewModule({
         .select('id,section_id,paragraph_index,paragraph_type,text_content,style_name,word_count')
         .eq('version_id', state.versionId)
         .order('paragraph_index', { ascending: true }),
-      supabase
-        .from('comments')
-        .select('id,thesis_id,version_id,paragraph_id,selected_text,comment_text,category,severity,status,source,created_at,resolved_at')
-        .eq('version_id', state.versionId)
-        .is('deleted_at', null)
-        .order('created_at', { ascending: false }),
     ]);
 
-    const error = versionResult.error || sectionsResult.error || paragraphsResult.error || commentsResult.error;
+    const error = versionResult.error || sectionsResult.error || paragraphsResult.error;
     if (error) {
       showAlert($('#review-alert'), `Workspace review gagal dimuat: ${error.message}`);
       return;
@@ -228,7 +277,13 @@ export function createReviewModule({
     state.version = versionResult.data;
     state.sections = sectionsResult.data || [];
     state.paragraphs = paragraphsResult.data || [];
-    state.comments = commentsResult.data || [];
+
+    try {
+      state.comments = await loadTrackedComments();
+    } catch (commentError) {
+      showAlert($('#review-alert'), `Komentar gagal dimuat: ${commentError.message}`, 'warning');
+      state.comments = [];
+    }
 
     $('#review-version-label').textContent = `Version ${state.version.version_number}`;
     $('#review-document-meta').textContent = [
@@ -356,6 +411,7 @@ export function createReviewModule({
             <span class="badge text-bg-${severityVariant}">${escapeHtml(severityLabel)}</span>
             <span class="badge text-bg-${statusVariant}">${escapeHtml(statusLabel)}</span>
             <span class="badge text-bg-light border text-dark">${escapeHtml(comment.category || '-')}</span>
+            ${comment.carried_from_previous_version ? '<span class="badge text-bg-light border text-secondary">Dari versi sebelumnya</span>' : ''}
           </div>
           ${comment.selected_text ? `
             <div class="review-comment-quote">“${escapeHtml(comment.selected_text)}”</div>
@@ -367,10 +423,24 @@ export function createReviewModule({
             <button type="button" class="btn btn-link btn-sm p-0 text-decoration-none" data-comment-goto="${comment.paragraph_id || ''}">
               <i class="bi bi-box-arrow-up-right me-1"></i>Ke paragraf
             </button>
-            <button type="button" class="btn btn-sm ${comment.status === 'closed' ? 'btn-outline-secondary' : 'btn-outline-success'}"
-              data-comment-toggle="${comment.id}" data-comment-status="${comment.status}">
-              ${comment.status === 'closed' ? 'Buka Lagi' : 'Selesai'}
-            </button>
+            <div class="d-flex flex-wrap gap-1 justify-content-end">
+              ${comment.status === 'revised' ? `
+                <button type="button" class="btn btn-sm btn-outline-warning" data-comment-set-status="${comment.id}" data-next-status="needs_revision">
+                  Perlu Revisi Lagi
+                </button>
+                <button type="button" class="btn btn-sm btn-outline-success" data-comment-set-status="${comment.id}" data-next-status="closed">
+                  Selesai
+                </button>
+              ` : comment.status === 'closed' ? `
+                <button type="button" class="btn btn-sm btn-outline-secondary" data-comment-set-status="${comment.id}" data-next-status="open">
+                  Buka Lagi
+                </button>
+              ` : `
+                <button type="button" class="btn btn-sm btn-outline-success" data-comment-set-status="${comment.id}" data-next-status="closed">
+                  Selesai
+                </button>
+              `}
+            </div>
           </div>
         </article>
       `;
@@ -481,20 +551,12 @@ export function createReviewModule({
   }
 
   async function reloadComments() {
-    const { data, error } = await supabase
-      .from('comments')
-      .select('id,thesis_id,version_id,paragraph_id,selected_text,comment_text,category,severity,status,source,created_at,resolved_at')
-      .eq('version_id', state.versionId)
-      .is('deleted_at', null)
-      .order('created_at', { ascending: false });
-
-    if (error) {
+    try {
+      state.comments = await loadTrackedComments();
+      renderComments();
+    } catch (error) {
       showAlert($('#review-alert'), `Komentar gagal diperbarui: ${error.message}`);
-      return;
     }
-
-    state.comments = data || [];
-    renderComments();
   }
 
   function restoreSelectedParagraph() {
@@ -502,15 +564,15 @@ export function createReviewModule({
     document.getElementById(`review-paragraph-${state.selectedParagraphId}`)?.classList.add('is-selected');
   }
 
-  async function toggleCommentStatus(commentId, currentStatus) {
-    const closing = currentStatus !== 'closed';
+  async function setCommentStatus(commentId, nextStatus) {
+    const payload = {
+      status: nextStatus,
+      resolved_at: nextStatus === 'closed' ? new Date().toISOString() : null,
+    };
 
     const { error } = await supabase
       .from('comments')
-      .update({
-        status: closing ? 'closed' : 'open',
-        resolved_at: closing ? new Date().toISOString() : null,
-      })
+      .update(payload)
       .eq('id', commentId);
 
     if (error) {
@@ -607,9 +669,9 @@ export function createReviewModule({
         return;
       }
 
-      const toggleButton = event.target.closest('[data-comment-toggle]');
-      if (toggleButton) {
-        await toggleCommentStatus(toggleButton.dataset.commentToggle, toggleButton.dataset.commentStatus);
+      const statusButton = event.target.closest('[data-comment-set-status]');
+      if (statusButton) {
+        await setCommentStatus(statusButton.dataset.commentSetStatus, statusButton.dataset.nextStatus);
       }
     });
   }
