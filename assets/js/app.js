@@ -1,6 +1,7 @@
 import { createClient } from 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.57.4/+esm';
 import { SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY } from './config.js';
 import { parseProposalFile } from './proposal-parser.js';
+import { createReviewModule } from './review.js';
 
 const supabase = createClient(SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY);
 const DOCUMENT_BUCKET = 'thesis-documents';
@@ -23,6 +24,7 @@ let archiveStudentId = null;
 let detailThesisId = null;
 let pendingThesisStudentId = '';
 let parsedProposal = null;
+let reviewModule = null;
 
 const studentFormModal = new bootstrap.Modal($('#studentFormModal'));
 const studentDetailModal = new bootstrap.Modal($('#studentDetailModal'));
@@ -228,6 +230,7 @@ async function showView(viewName) {
 
   if (viewName === 'students') await loadStudents();
   if (viewName === 'theses') await loadTheses();
+  if (viewName === 'review' && reviewModule) await reviewModule.loadTheses();
 }
 
 async function loadStudents() {
@@ -1230,6 +1233,7 @@ $('#logout-button').addEventListener('click', async () => {
   studentsCache = [];
   thesesCache = [];
   parsedProposal = null;
+  if (reviewModule) reviewModule.reset();
   currentUser = null;
   await renderApp();
 });
@@ -1329,6 +1333,17 @@ $('#detail-edit-thesis').addEventListener('click', () => {
   setTimeout(() => openEditThesis(detailThesisId), 180);
 });
 
+$('#detail-open-review').addEventListener('click', () => {
+  if (!detailThesisId || !reviewModule) return;
+  const thesisId = detailThesisId;
+  thesisDetailModal.hide();
+
+  setTimeout(async () => {
+    await showView('review');
+    await reviewModule.openThesis(thesisId);
+  }, 180);
+});
+
 $('#detail-thesis-documents').addEventListener('click', async (event) => {
   const button = event.target.closest('[data-document-download]');
   if (!button) return;
@@ -1346,6 +1361,16 @@ document.addEventListener('click', (event) => {
 supabase.auth.onAuthStateChange(() => {
   // Aksi login/logout melakukan render eksplisit agar tidak terjadi render ganda.
 });
+
+reviewModule = createReviewModule({
+  supabase,
+  getCurrentUser: () => currentUser,
+  escapeHtml,
+  showAlert,
+  clearAlert,
+  refreshDashboardStats: loadDashboardStats,
+});
+reviewModule.init();
 
 initPasswordToggles();
 renderApp();
