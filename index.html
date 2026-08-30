@@ -449,6 +449,173 @@
   </div>
 
 
+
+  <div class="modal fade" id="thesisStartModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-lg modal-dialog-centered">
+      <div class="modal-content border-0 rounded-4">
+        <div class="modal-header">
+          <div>
+            <h5 class="modal-title fw-bold">Tambah Skripsi</h5>
+            <div class="text-secondary small">Pilih cara memulai data skripsi.</div>
+          </div>
+          <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+        </div>
+        <div class="modal-body">
+          <div class="row g-3">
+            <div class="col-md-6">
+              <button id="choose-import-proposal" type="button" class="creation-choice w-100 text-start">
+                <div class="creation-choice-icon"><i class="bi bi-file-earmark-arrow-up"></i></div>
+                <div class="fw-bold mb-1">Import Proposal</div>
+                <div class="text-secondary small">Upload DOCX/PDF. Aplikasi membaca isi proposal dan mengisi data skripsi otomatis.</div>
+                <div class="mt-3 small fw-semibold">Direkomendasikan <i class="bi bi-arrow-right ms-1"></i></div>
+              </button>
+            </div>
+            <div class="col-md-6">
+              <button id="choose-manual-thesis" type="button" class="creation-choice w-100 text-start">
+                <div class="creation-choice-icon"><i class="bi bi-pencil-square"></i></div>
+                <div class="fw-bold mb-1">Input Manual</div>
+                <div class="text-secondary small">Gunakan formulir jika proposal belum tersedia atau data perlu dibuat tanpa dokumen.</div>
+                <div class="mt-3 small fw-semibold">Buka formulir <i class="bi bi-arrow-right ms-1"></i></div>
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="modal fade" id="proposalImportModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-xl modal-dialog-scrollable">
+      <div class="modal-content border-0 rounded-4">
+        <div class="modal-header">
+          <div>
+            <h5 class="modal-title fw-bold">Import Proposal Skripsi</h5>
+            <div class="text-secondary small">Upload proposal, periksa hasil pembacaan, lalu buat skripsi.</div>
+          </div>
+          <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+        </div>
+        <form id="proposal-import-form">
+          <div class="modal-body">
+            <div id="proposal-import-alert"></div>
+
+            <div id="proposal-upload-step">
+              <div class="row g-3">
+                <div class="col-md-6">
+                  <label for="proposal-student-id" class="form-label">Mahasiswa <span class="text-danger">*</span></label>
+                  <select id="proposal-student-id" class="form-select" required></select>
+                </div>
+                <div class="col-md-6">
+                  <label for="proposal-file" class="form-label">File Proposal <span class="text-danger">*</span></label>
+                  <input id="proposal-file" type="file" class="form-control" accept=".docx,.pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document,application/pdf" required>
+                  <div class="form-text">DOCX direkomendasikan. PDF didukung sebagai fallback. Maksimal 20 MB.</div>
+                </div>
+              </div>
+
+              <div id="proposal-drop-zone" class="proposal-drop-zone mt-4">
+                <div class="proposal-drop-icon"><i class="bi bi-cloud-arrow-up"></i></div>
+                <div class="fw-semibold">Pilih file proposal di atas</div>
+                <div class="text-secondary small">Setelah dipilih, aplikasi akan membaca dokumen langsung di browser.</div>
+              </div>
+
+              <div id="proposal-processing" class="d-none mt-4">
+                <div class="card bg-light border-0">
+                  <div class="card-body">
+                    <div class="d-flex align-items-center gap-3">
+                      <div class="spinner-border spinner-border-sm"></div>
+                      <div>
+                        <div class="fw-semibold">Membaca proposal…</div>
+                        <div id="proposal-processing-text" class="text-secondary small">Mengekstrak teks dan struktur dokumen.</div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <div id="proposal-review-step" class="d-none">
+              <div class="proposal-summary mb-4">
+                <div>
+                  <div class="text-secondary small">Dokumen</div>
+                  <div id="proposal-summary-file" class="fw-semibold"></div>
+                </div>
+                <div>
+                  <div class="text-secondary small">Kata</div>
+                  <div id="proposal-summary-words" class="fw-semibold">0</div>
+                </div>
+                <div>
+                  <div class="text-secondary small">Paragraf</div>
+                  <div id="proposal-summary-paragraphs" class="fw-semibold">0</div>
+                </div>
+                <div>
+                  <div class="text-secondary small">Bagian terdeteksi</div>
+                  <div id="proposal-summary-sections" class="fw-semibold">0</div>
+                </div>
+              </div>
+
+              <div class="alert alert-info">
+                <i class="bi bi-stars me-2"></i>
+                Data di bawah adalah hasil pembacaan otomatis. Periksa dan koreksi sebelum disimpan.
+              </div>
+
+              <div class="row g-3">
+                <div class="col-md-6">
+                  <label for="proposal-review-student" class="form-label">Mahasiswa</label>
+                  <select id="proposal-review-student" class="form-select" required></select>
+                  <div id="proposal-detected-identity" class="form-text"></div>
+                </div>
+                <div class="col-md-3">
+                  <label for="proposal-review-type" class="form-label">Jenis Penelitian</label>
+                  <select id="proposal-review-type" class="form-select">
+                    <option value="">Belum terdeteksi</option>
+                    <option value="quantitative">Kuantitatif</option>
+                    <option value="qualitative">Kualitatif</option>
+                    <option value="mixed">Mixed Method</option>
+                  </select>
+                </div>
+                <div class="col-md-3">
+                  <label for="proposal-review-field" class="form-label">Bidang Penelitian</label>
+                  <input id="proposal-review-field" class="form-control" maxlength="100">
+                </div>
+                <div class="col-12">
+                  <label for="proposal-review-title" class="form-label">Judul Skripsi <span class="text-danger">*</span></label>
+                  <textarea id="proposal-review-title" class="form-control" rows="3" required></textarea>
+                </div>
+                <div class="col-12">
+                  <label for="proposal-review-keywords" class="form-label">Keywords</label>
+                  <input id="proposal-review-keywords" class="form-control" placeholder="Pisahkan dengan koma">
+                </div>
+                <div class="col-12">
+                  <label for="proposal-review-abstract" class="form-label">Abstrak / Ringkasan</label>
+                  <textarea id="proposal-review-abstract" class="form-control" rows="6"></textarea>
+                </div>
+              </div>
+
+              <div class="row g-4 mt-1">
+                <div class="col-lg-5">
+                  <div class="fw-semibold mb-2">Struktur terdeteksi</div>
+                  <div id="proposal-detected-sections" class="list-group proposal-section-preview"></div>
+                </div>
+                <div class="col-lg-7">
+                  <div class="fw-semibold mb-2">Preview teks</div>
+                  <div id="proposal-text-preview" class="proposal-text-preview"></div>
+                </div>
+              </div>
+
+              <div id="proposal-warnings" class="mt-3"></div>
+            </div>
+          </div>
+          <div class="modal-footer">
+            <button id="proposal-back-button" type="button" class="btn btn-light d-none">Kembali</button>
+            <button type="button" class="btn btn-light" data-bs-dismiss="modal">Batal</button>
+            <button id="proposal-save-button" type="submit" class="btn btn-dark d-none">
+              <i class="bi bi-cloud-check me-1"></i>Simpan Proposal & Buat Skripsi
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+  </div>
+
   <div class="modal fade" id="thesisFormModal" tabindex="-1" aria-hidden="true">
     <div class="modal-dialog modal-xl modal-dialog-scrollable">
       <div class="modal-content border-0 rounded-4">
@@ -505,6 +672,7 @@
                 <label for="thesis-current-stage" class="form-label">Tahap Saat Ini</label>
                 <select id="thesis-current-stage" class="form-select">
                   <option value="">Belum ditentukan</option>
+                  <option value="PROPOSAL">Proposal</option>
                   <option value="BAB I">BAB I – Pendahuluan</option>
                   <option value="BAB II">BAB II – Kajian Pustaka</option>
                   <option value="BAB III">BAB III – Metode Penelitian</option>
@@ -562,6 +730,14 @@
             <div class="col-12"><div class="detail-label">Judul Bahasa Inggris</div><div id="detail-thesis-title-en">-</div></div>
             <div class="col-12"><div class="detail-label">Abstrak / Ringkasan</div><div id="detail-thesis-abstract" class="text-break thesis-abstract">-</div></div>
           </div>
+
+          <div class="d-flex justify-content-between align-items-center gap-3 mb-3">
+            <div>
+              <h6 class="fw-bold mb-1">Dokumen</h6>
+              <p class="text-secondary small mb-0">File proposal dan versi dokumen yang tersimpan.</p>
+            </div>
+          </div>
+          <div id="detail-thesis-documents" class="mb-4"></div>
 
           <div class="d-flex justify-content-between align-items-center gap-3 mb-3">
             <div>
