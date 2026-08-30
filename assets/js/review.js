@@ -300,6 +300,9 @@ export function createReviewModule({
         >
           <div class="review-paragraph-index">${paragraph.paragraph_index + 1}</div>
           <div class="review-paragraph-text">${escapeHtml(paragraph.text_content)}</div>
+          <button type="button" class="review-paragraph-comment-action" data-paragraph-comment="${paragraph.id}" title="Tambah komentar">
+            <i class="bi bi-plus-circle me-1"></i>Komentar
+          </button>
           ${activeComments.length ? `
             <button type="button" class="review-comment-badge" data-scroll-comment="${activeComments[0].id}" title="Lihat komentar">
               <i class="bi bi-chat-left-text"></i> ${activeComments.length}
@@ -560,6 +563,19 @@ export function createReviewModule({
       if (badge) {
         event.stopPropagation();
         scrollToComment(badge.dataset.scrollComment);
+        return;
+      }
+
+      const commentButton = event.target.closest('[data-paragraph-comment]');
+      if (commentButton) {
+        event.stopPropagation();
+        const paragraphId = commentButton.dataset.paragraphComment;
+
+        if (state.selectedParagraphId !== paragraphId) {
+          selectParagraph(paragraphId);
+        }
+
+        openCommentForm();
         return;
       }
 
