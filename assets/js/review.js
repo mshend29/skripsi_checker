@@ -566,7 +566,8 @@ export function createReviewModule({
       const paragraphElement = event.target.closest('[data-review-paragraph]');
       if (!paragraphElement) return;
 
-      selectParagraph(paragraphElement.dataset.reviewParagraph);
+      const selectedText = captureTextSelection(paragraphElement);
+      selectParagraph(paragraphElement.dataset.reviewParagraph, selectedText);
     });
 
     $('#review-document-content').addEventListener('mouseup', (event) => {
