@@ -40,9 +40,10 @@ Script akan menambahkan 6 mahasiswa dummy. Jika NIM dummy sudah ada, record ters
 
 - Dashboard statistik lokal
 - Data mahasiswa: tambah, cari, edit, hapus, dan validasi
-- Data skripsi
-- Import proposal DOCX/PDF
-- Penyimpanan dokumen proposal berdasarkan versi
+- Data skripsi: cari/filter, tambah, edit, detail, hapus aman, dan status progres
+- Import dokumen Proposal/Revisi/Final dalam format DOCX/PDF
+- Riwayat versi dokumen dan buka file lokal langsung dari aplikasi
+- Penyimpanan dokumen terpisah berdasarkan jenis dan versi
 - Deteksi awal judul dari isi dokumen
 - Fondasi database untuk dokumen dan komentar/revisi
 - Halaman Koreksi dan Finalisasi sebagai tahap pengembangan berikutnya
