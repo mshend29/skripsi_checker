@@ -63,3 +63,64 @@ body {
 .password-toggle:focus {
   box-shadow: none;
 }
+
+
+.app-view {
+  min-height: 60vh;
+}
+
+.app-nav .nav-link {
+  display: flex;
+  align-items: center;
+}
+
+.table > :not(caption) > * > * {
+  padding-top: .85rem;
+  padding-bottom: .85rem;
+}
+
+.student-name-button {
+  color: #212529;
+}
+
+.student-name-button:hover {
+  color: #000;
+  text-decoration: underline !important;
+}
+
+.empty-state {
+  border: 1px dashed #dee2e6;
+  border-radius: 1rem;
+  background: #fafafa;
+}
+
+.empty-icon {
+  width: 52px;
+  height: 52px;
+  display: grid;
+  place-items: center;
+  margin-inline: auto;
+  border-radius: 50%;
+  background: #f1f3f5;
+  font-size: 1.35rem;
+}
+
+.detail-label {
+  color: #6c757d;
+  font-size: .8rem;
+  margin-bottom: .2rem;
+}
+
+.student-detail-grid > div > div:last-child {
+  font-weight: 500;
+}
+
+.modal-content {
+  box-shadow: 0 1rem 3rem rgba(0, 0, 0, .12);
+}
+
+@media (max-width: 767.98px) {
+  .table {
+    min-width: 760px;
+  }
+}
