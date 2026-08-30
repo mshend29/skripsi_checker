@@ -37,6 +37,29 @@ function setButtonBusy(button, busy, busyText) {
   button.textContent = busy ? busyText : button.dataset.defaultText;
 }
 
+function initPasswordToggles() {
+  document.querySelectorAll('[data-password-toggle]').forEach((button) => {
+    button.addEventListener('click', () => {
+      const input = document.getElementById(button.dataset.passwordToggle);
+      if (!input) return;
+
+      const isHidden = input.type === 'password';
+      input.type = isHidden ? 'text' : 'password';
+
+      const icon = button.querySelector('i');
+      if (icon) {
+        icon.classList.toggle('bi-eye', !isHidden);
+        icon.classList.toggle('bi-eye-slash', isHidden);
+      }
+
+      const label = isHidden ? 'Sembunyikan password' : 'Tampilkan password';
+      button.setAttribute('aria-label', label);
+      button.setAttribute('title', label);
+      button.setAttribute('aria-pressed', String(isHidden));
+    });
+  });
+}
+
 async function getCurrentUser() {
   const { data, error } = await supabase.auth.getUser();
   if (error) return null;
@@ -201,4 +224,5 @@ supabase.auth.onAuthStateChange(() => {
   // Render eksplisit dilakukan oleh aksi login/logout untuk mencegah render ganda.
 });
 
+initPasswordToggles();
 renderApp();
