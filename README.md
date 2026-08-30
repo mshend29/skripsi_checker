@@ -26,6 +26,16 @@ python main.py
 
 Database SQLite akan dibuat otomatis di `data/skripsi_checker.db`.
 
+### Isi 6 data dummy mahasiswa
+
+Setelah dependency terpasang, jalankan:
+
+```powershell
+python seed_students.py
+```
+
+Script akan menambahkan 6 mahasiswa dummy. Jika NIM dummy sudah ada, record tersebut akan dilewati sehingga aman dijalankan ulang.
+
 ## Fitur versi awal
 
 - Dashboard statistik lokal
