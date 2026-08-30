@@ -1,0 +1,185 @@
+<!doctype html>
+<html lang="id">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta name="description" content="SkripsiCheck - Academic Thesis Review Assistant">
+  <title>SkripsiCheck</title>
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.8/dist/css/bootstrap.min.css" rel="stylesheet">
+  <link rel="stylesheet" href="assets/css/app.css">
+</head>
+<body>
+  <div id="app-loading" class="min-vh-100 d-flex align-items-center justify-content-center bg-light">
+    <div class="text-center">
+      <div class="spinner-border mb-3" role="status"></div>
+      <div class="text-secondary">Memuat SkripsiCheck…</div>
+    </div>
+  </div>
+
+  <main id="auth-screen" class="d-none min-vh-100 auth-bg">
+    <div class="container py-5">
+      <div class="row justify-content-center align-items-center min-vh-100 py-4">
+        <div class="col-lg-5 col-md-7">
+          <div class="text-center mb-4">
+            <div class="brand-mark mx-auto mb-3">SC</div>
+            <h1 class="h3 fw-bold mb-1">SkripsiCheck</h1>
+            <p class="text-secondary mb-0">Academic Thesis Review Assistant</p>
+          </div>
+
+          <div class="card border-0 shadow-sm rounded-4">
+            <div class="card-body p-4 p-md-5">
+              <ul class="nav nav-pills nav-fill mb-4" role="tablist">
+                <li class="nav-item">
+                  <button class="nav-link active" data-bs-toggle="pill" data-bs-target="#login-pane" type="button">Masuk</button>
+                </li>
+                <li class="nav-item">
+                  <button class="nav-link" data-bs-toggle="pill" data-bs-target="#register-pane" type="button">Daftar</button>
+                </li>
+              </ul>
+
+              <div id="auth-alert"></div>
+
+              <div class="tab-content">
+                <div class="tab-pane fade show active" id="login-pane">
+                  <form id="login-form">
+                    <div class="mb-3">
+                      <label for="login-email" class="form-label">Email</label>
+                      <input id="login-email" type="email" class="form-control form-control-lg" required autocomplete="email">
+                    </div>
+                    <div class="mb-4">
+                      <label for="login-password" class="form-label">Password</label>
+                      <input id="login-password" type="password" class="form-control form-control-lg" required autocomplete="current-password">
+                    </div>
+                    <button id="login-button" type="submit" class="btn btn-dark btn-lg w-100">Masuk</button>
+                  </form>
+                </div>
+
+                <div class="tab-pane fade" id="register-pane">
+                  <form id="register-form">
+                    <div class="mb-3">
+                      <label for="register-name" class="form-label">Nama lengkap</label>
+                      <input id="register-name" type="text" class="form-control" required>
+                    </div>
+                    <div class="mb-3">
+                      <label for="register-institution" class="form-label">Institusi</label>
+                      <input id="register-institution" type="text" class="form-control">
+                    </div>
+                    <div class="mb-3">
+                      <label for="register-study-program" class="form-label">Program studi</label>
+                      <input id="register-study-program" type="text" class="form-control">
+                    </div>
+                    <div class="mb-3">
+                      <label for="register-email" class="form-label">Email</label>
+                      <input id="register-email" type="email" class="form-control" required autocomplete="email">
+                    </div>
+                    <div class="mb-4">
+                      <label for="register-password" class="form-label">Password</label>
+                      <input id="register-password" type="password" minlength="8" class="form-control" required autocomplete="new-password">
+                      <div class="form-text">Minimal 8 karakter.</div>
+                    </div>
+                    <button id="register-button" type="submit" class="btn btn-dark w-100">Buat akun dosen</button>
+                  </form>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </main>
+
+  <main id="dashboard-screen" class="d-none min-vh-100 bg-body-tertiary">
+    <nav class="navbar navbar-expand-lg bg-white border-bottom sticky-top">
+      <div class="container-fluid px-4">
+        <a class="navbar-brand fw-bold" href="#">SkripsiCheck</a>
+        <div class="d-flex align-items-center gap-3">
+          <div class="text-end d-none d-sm-block">
+            <div id="profile-name" class="fw-semibold small">Dosen</div>
+            <div id="profile-email" class="text-secondary small"></div>
+          </div>
+          <button id="logout-button" class="btn btn-outline-secondary btn-sm">Keluar</button>
+        </div>
+      </div>
+    </nav>
+
+    <div class="container-fluid">
+      <div class="row">
+        <aside class="col-lg-2 d-none d-lg-block sidebar bg-white border-end min-vh-100 p-3">
+          <div class="nav flex-column nav-pills gap-1">
+            <a class="nav-link active" href="#">Dashboard</a>
+            <a class="nav-link" href="#" data-coming-soon>Mahasiswa</a>
+            <a class="nav-link" href="#" data-coming-soon>Skripsi</a>
+            <a class="nav-link" href="#" data-coming-soon>Review</a>
+            <a class="nav-link" href="#" data-coming-soon>Bank Komentar</a>
+          </div>
+        </aside>
+
+        <section class="col-lg-10 p-4 p-xl-5">
+          <div class="d-flex flex-wrap justify-content-between align-items-center gap-3 mb-4">
+            <div>
+              <h2 class="h4 fw-bold mb-1">Dashboard</h2>
+              <p class="text-secondary mb-0">Ringkasan bimbingan skripsi Anda.</p>
+            </div>
+            <button class="btn btn-dark" data-coming-soon>+ Tambah Mahasiswa</button>
+          </div>
+
+          <div id="dashboard-alert"></div>
+
+          <div class="row g-3 mb-4">
+            <div class="col-sm-6 col-xl-3">
+              <div class="card metric-card border-0 shadow-sm">
+                <div class="card-body">
+                  <div class="text-secondary small">Mahasiswa Aktif</div>
+                  <div id="stat-students" class="display-6 fw-semibold">0</div>
+                </div>
+              </div>
+            </div>
+            <div class="col-sm-6 col-xl-3">
+              <div class="card metric-card border-0 shadow-sm">
+                <div class="card-body">
+                  <div class="text-secondary small">Skripsi Aktif</div>
+                  <div id="stat-theses" class="display-6 fw-semibold">0</div>
+                </div>
+              </div>
+            </div>
+            <div class="col-sm-6 col-xl-3">
+              <div class="card metric-card border-0 shadow-sm">
+                <div class="card-body">
+                  <div class="text-secondary small">Komentar Terbuka</div>
+                  <div id="stat-comments" class="display-6 fw-semibold">0</div>
+                </div>
+              </div>
+            </div>
+            <div class="col-sm-6 col-xl-3">
+              <div class="card metric-card border-0 shadow-sm">
+                <div class="card-body">
+                  <div class="text-secondary small">Temuan AI</div>
+                  <div id="stat-ai" class="display-6 fw-semibold">0</div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div class="card border-0 shadow-sm rounded-4">
+            <div class="card-body p-4">
+              <h3 class="h6 fw-bold">Status sistem</h3>
+              <div class="d-flex align-items-center gap-2 mt-3">
+                <span class="status-dot bg-success"></span><span>Supabase Auth terhubung</span>
+              </div>
+              <div class="d-flex align-items-center gap-2 mt-2">
+                <span class="status-dot bg-success"></span><span>Profil dosen menggunakan RLS</span>
+              </div>
+              <div class="d-flex align-items-center gap-2 mt-2">
+                <span class="status-dot bg-success"></span><span>Dashboard membaca data milik dosen yang login</span>
+              </div>
+            </div>
+          </div>
+        </section>
+      </div>
+    </div>
+  </main>
+
+  <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.8/dist/js/bootstrap.bundle.min.js"></script>
+  <script type="module" src="assets/js/app.js"></script>
+</body>
+</html>
