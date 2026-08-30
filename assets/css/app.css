@@ -278,3 +278,72 @@ body {
     grid-column: 1 / -1;
   }
 }
+
+
+/* Make Bootstrap scrollable modals work even when body/footer are wrapped by a form. */
+.modal-dialog-scrollable {
+  height: calc(100dvh - 1rem);
+  margin-top: .5rem;
+  margin-bottom: .5rem;
+}
+
+.modal-dialog-scrollable .modal-content {
+  max-height: 100%;
+  overflow: hidden;
+}
+
+.modal-dialog-scrollable .modal-content > form {
+  display: flex;
+  flex: 1 1 auto;
+  flex-direction: column;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.modal-dialog-scrollable .modal-body {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  -webkit-overflow-scrolling: touch;
+}
+
+.modal-dialog-scrollable .modal-header,
+.modal-dialog-scrollable .modal-footer {
+  flex: 0 0 auto;
+}
+
+.publication-placeholder {
+  border: 1px dashed #ced4da;
+  border-radius: .85rem;
+  padding: 1rem;
+  background: #fafafa;
+}
+
+@media (min-width: 576px) {
+  .modal-dialog-scrollable {
+    height: calc(100dvh - 3.5rem);
+    margin-top: 1.75rem;
+    margin-bottom: 1.75rem;
+  }
+}
+
+@media (max-width: 575.98px) {
+  .modal-dialog {
+    margin-left: .5rem;
+    margin-right: .5rem;
+  }
+
+  .modal-dialog-scrollable .modal-content {
+    border-radius: .85rem !important;
+  }
+
+  .modal-dialog-scrollable .modal-header,
+  .modal-dialog-scrollable .modal-footer {
+    padding: .85rem 1rem;
+  }
+
+  .modal-dialog-scrollable .modal-body {
+    padding: 1rem;
+  }
+}
