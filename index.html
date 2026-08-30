@@ -581,12 +581,10 @@
                   <textarea id="proposal-review-title" class="form-control" rows="3" required></textarea>
                 </div>
                 <div class="col-12">
-                  <label for="proposal-review-keywords" class="form-label">Keywords</label>
-                  <input id="proposal-review-keywords" class="form-control" placeholder="Pisahkan dengan koma">
-                </div>
-                <div class="col-12">
-                  <label for="proposal-review-abstract" class="form-label">Abstrak / Ringkasan</label>
-                  <textarea id="proposal-review-abstract" class="form-control" rows="6"></textarea>
+                  <div class="alert alert-light border mb-0 small">
+                    <i class="bi bi-info-circle me-2"></i>
+                    Abstrak dan keywords belum diperlukan pada tahap proposal. Metadata tersebut akan diisi pada tahap finalisasi/publikasi skripsi.
+                  </div>
                 </div>
               </div>
 
@@ -690,12 +688,10 @@
                 <input id="thesis-approved-date" type="date" class="form-control">
               </div>
               <div class="col-12">
-                <label for="thesis-keywords" class="form-label">Keywords</label>
-                <input id="thesis-keywords" class="form-control" placeholder="Pisahkan dengan koma, mis. social media, purchase intention">
-              </div>
-              <div class="col-12">
-                <label for="thesis-abstract" class="form-label">Abstrak / Ringkasan</label>
-                <textarea id="thesis-abstract" class="form-control" rows="5"></textarea>
+                <div class="alert alert-light border mb-0 small">
+                  <i class="bi bi-info-circle me-2"></i>
+                  Abstrak dan keywords akan dikelola pada tahap finalisasi/publikasi, bukan saat pembuatan awal skripsi.
+                </div>
               </div>
             </div>
           </div>
@@ -726,9 +722,18 @@
             <div class="col-md-3"><div class="detail-label">Bidang Penelitian</div><div id="detail-thesis-field">-</div></div>
             <div class="col-md-3"><div class="detail-label">Tanggal Mulai</div><div id="detail-thesis-start-date">-</div></div>
             <div class="col-md-3"><div class="detail-label">Tanggal ACC</div><div id="detail-thesis-approved-date">-</div></div>
-            <div class="col-md-6"><div class="detail-label">Keywords</div><div id="detail-thesis-keywords">-</div></div>
             <div class="col-12"><div class="detail-label">Judul Bahasa Inggris</div><div id="detail-thesis-title-en">-</div></div>
-            <div class="col-12"><div class="detail-label">Abstrak / Ringkasan</div><div id="detail-thesis-abstract" class="text-break thesis-abstract">-</div></div>
+            <div class="col-12">
+              <div class="publication-placeholder">
+                <div class="d-flex align-items-center gap-2 fw-semibold mb-1">
+                  <i class="bi bi-journal-check"></i>
+                  Metadata Finalisasi / Publikasi
+                </div>
+                <div class="text-secondary small">
+                  Abstrak dan keywords akan dikelola setelah naskah skripsi selesai/ACC.
+                </div>
+              </div>
+            </div>
           </div>
 
           <div class="d-flex justify-content-between align-items-center gap-3 mb-3">
