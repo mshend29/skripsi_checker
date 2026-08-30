@@ -2,6 +2,7 @@ import { createClient } from 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js
 import { SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY } from './config.js';
 import { parseProposalFile } from './proposal-parser.js';
 import { createReviewModule } from './review.js';
+import { createRevisionModule } from './revision.js';
 
 const supabase = createClient(SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY);
 const DOCUMENT_BUCKET = 'thesis-documents';
@@ -25,6 +26,7 @@ let detailThesisId = null;
 let pendingThesisStudentId = '';
 let parsedProposal = null;
 let reviewModule = null;
+let revisionModule = null;
 
 const studentFormModal = new bootstrap.Modal($('#studentFormModal'));
 const studentDetailModal = new bootstrap.Modal($('#studentDetailModal'));
@@ -1042,11 +1044,19 @@ async function loadThesisDocuments(thesisId) {
             </div>
           </div>
           ${latest ? `
-            <button type="button" class="btn btn-sm btn-outline-secondary"
-              data-document-download="${escapeHtml(latest.file_path)}"
-              data-document-name="${escapeHtml(latest.file_name)}">
-              <i class="bi bi-download me-1"></i>Download
-            </button>
+            <div class="d-flex flex-wrap gap-2">
+              <button type="button" class="btn btn-sm btn-dark"
+                data-document-revision="${documentRecord.id}"
+                data-document-title="${escapeHtml(documentRecord.document_name)}"
+                data-thesis-id="${thesisId}">
+                <i class="bi bi-cloud-arrow-up me-1"></i>Upload Revisi
+              </button>
+              <button type="button" class="btn btn-sm btn-outline-secondary"
+                data-document-download="${escapeHtml(latest.file_path)}"
+                data-document-name="${escapeHtml(latest.file_name)}">
+                <i class="bi bi-download me-1"></i>Download
+              </button>
+            </div>
           ` : ''}
         </div>
       </div>
@@ -1234,6 +1244,7 @@ $('#logout-button').addEventListener('click', async () => {
   thesesCache = [];
   parsedProposal = null;
   if (reviewModule) reviewModule.reset();
+  if (revisionModule) revisionModule.reset();
   currentUser = null;
   await renderApp();
 });
@@ -1345,6 +1356,17 @@ $('#detail-open-review').addEventListener('click', () => {
 });
 
 $('#detail-thesis-documents').addEventListener('click', async (event) => {
+  const revisionButton = event.target.closest('[data-document-revision]');
+  if (revisionButton && revisionModule) {
+    const thesisId = revisionButton.dataset.thesisId;
+    const documentId = revisionButton.dataset.documentRevision;
+    const documentName = revisionButton.dataset.documentTitle;
+
+    thesisDetailModal.hide();
+    setTimeout(() => revisionModule.open({ thesisId, documentId, documentName }), 180);
+    return;
+  }
+
   const button = event.target.closest('[data-document-download]');
   if (!button) return;
   await downloadStoredDocument(button.dataset.documentDownload, button.dataset.documentName);
@@ -1361,6 +1383,26 @@ document.addEventListener('click', (event) => {
 supabase.auth.onAuthStateChange(() => {
   // Aksi login/logout melakukan render eksplisit agar tidak terjadi render ganda.
 });
+
+revisionModule = createRevisionModule({
+  supabase,
+  documentBucket: DOCUMENT_BUCKET,
+  maxBytes: MAX_PROPOSAL_BYTES,
+  getCurrentUser: () => currentUser,
+  escapeHtml,
+  showAlert,
+  clearAlert,
+  onRevisionSaved: async ({ thesisId, result, summary }) => {
+    await Promise.all([loadTheses(), loadDashboardStats()]);
+    showAlert(
+      globalAlert,
+      `Version ${result?.version_number || 'baru'} berhasil dibuat. ${result?.comments_marked_revised || 0} komentar ditandai Sudah Direvisi. Perubahan: ${summary.modified} diubah, ${summary.added} ditambah, ${summary.deleted} dihapus.`,
+      'success'
+    );
+    setTimeout(() => openThesisDetail(thesisId), 220);
+  },
+});
+revisionModule.init();
 
 reviewModule = createReviewModule({
   supabase,
