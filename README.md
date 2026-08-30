@@ -1,51 +1,68 @@
-# SkripsiCheck
+# Skripsi Checker
 
-Aplikasi web untuk membantu dosen mengoreksi skripsi mahasiswa, mengelola catatan revisi, versioning dokumen, dan temuan AI.
+Aplikasi desktop offline untuk membantu dosen mengelola mahasiswa, proposal, revisi, koreksi, dan finalisasi skripsi.
 
-## Stack awal
+## Stack
 
-- HTML + Bootstrap 5
-- JavaScript ES Modules
-- Supabase Auth
-- Supabase PostgreSQL + RLS
-- Supabase project: `lwfljoazmfckxuwcsdvk`
+- Python 3.12+
+- PySide6
+- SQLite
+- SQLAlchemy
+- python-docx
+- PyMuPDF
 
-## Fitur yang sudah disiapkan
+Semua data disimpan lokal. Aplikasi tidak membutuhkan Supabase atau server web.
 
-- Register dosen
-- Login / logout
-- Profil dosen otomatis dari `public.users`
-- Dashboard live count
-- RLS per dosen
-- Struktur database untuk mahasiswa, skripsi, dokumen, versi, paragraf, komentar, AI findings, dan bank komentar
+## Menjalankan aplikasi
 
-## Menjalankan lokal
+### Windows
 
-Jalankan HTTP server dari root repository:
-
-```bash
-python -m http.server 8080
+```powershell
+py -m venv .venv
+.venv\Scripts\activate
+pip install -r requirements.txt
+python main.py
 ```
 
-Kemudian buka:
+Database SQLite akan dibuat otomatis di `data/skripsi_checker.db`.
+
+## Fitur versi awal
+
+- Dashboard statistik lokal
+- Data mahasiswa
+- Data skripsi
+- Import proposal DOCX/PDF
+- Penyimpanan dokumen proposal berdasarkan versi
+- Deteksi awal judul dari isi dokumen
+- Fondasi database untuk dokumen dan komentar/revisi
+- Halaman Koreksi dan Finalisasi sebagai tahap pengembangan berikutnya
+
+## Struktur
 
 ```text
-http://localhost:8080
+.
+├── main.py
+├── requirements.txt
+├── app/
+│   ├── database.py
+│   ├── models.py
+│   ├── services/
+│   │   └── document_service.py
+│   └── ui/
+│       ├── main_window.py
+│       └── pages/
+│           ├── dashboard.py
+│           ├── students.py
+│           └── theses.py
+├── data/
+└── storage/
+    ├── proposals/
+    ├── revisions/
+    └── finals/
 ```
 
-Jangan membuka `index.html` melalui `file://` karena aplikasi memakai JavaScript ES Modules.
+## Prinsip penyimpanan
 
-## Keamanan
+File proposal/revisi/final tidak disimpan di database. Database hanya menyimpan metadata dan path file. File fisik disimpan di folder `storage/`.
 
-Frontend hanya menggunakan Supabase **publishable key**. Jangan pernah menaruh `service_role` / secret key di source code frontend.
-
-## Roadmap
-
-1. Authentication + profile dosen
-2. Dashboard
-3. Modul mahasiswa
-4. Modul skripsi
-5. Upload DOCX + document versioning
-6. Review paragraph-level + komentar
-7. AI findings
-8. Revision comparison
+Riwayat Git lama tetap tersedia sehingga versi web sebelumnya masih dapat dilihat dari commit terdahulu.
