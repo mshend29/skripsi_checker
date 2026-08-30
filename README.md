@@ -45,8 +45,10 @@ Script akan menambahkan 6 mahasiswa dummy. Jika NIM dummy sudah ada, record ters
 - Riwayat versi dokumen dan buka file lokal langsung dari aplikasi
 - Penyimpanan dokumen terpisah berdasarkan jenis dan versi
 - Deteksi awal judul dari isi dokumen
-- Fondasi database untuk dokumen dan komentar/revisi
-- Halaman Koreksi dan Finalisasi sebagai tahap pengembangan berikutnya
+- Koreksi per versi dokumen dengan viewer teks DOCX/PDF
+- Navigasi BAB/subbab hasil deteksi dokumen
+- Komentar dosen: tambah, edit, selesai/buka kembali, hapus, dan filter status
+- Halaman Finalisasi sebagai tahap pengembangan berikutnya
 
 ## Struktur
 
