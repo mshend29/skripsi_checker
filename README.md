@@ -29,7 +29,7 @@ Database SQLite akan dibuat otomatis di `data/skripsi_checker.db`.
 ## Fitur versi awal
 
 - Dashboard statistik lokal
-- Data mahasiswa
+- Data mahasiswa: tambah, cari, edit, hapus, dan validasi
 - Data skripsi
 - Import proposal DOCX/PDF
 - Penyimpanan dokumen proposal berdasarkan versi
