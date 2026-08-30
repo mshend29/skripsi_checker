@@ -6,6 +6,7 @@
   <meta name="description" content="SkripsiCheck - Academic Thesis Review Assistant">
   <title>SkripsiCheck</title>
   <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.8/dist/css/bootstrap.min.css" rel="stylesheet">
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.13.1/font/bootstrap-icons.min.css" rel="stylesheet">
   <link rel="stylesheet" href="assets/css/app.css">
 </head>
 <body>
@@ -48,7 +49,19 @@
                     </div>
                     <div class="mb-4">
                       <label for="login-password" class="form-label">Password</label>
-                      <input id="login-password" type="password" class="form-control form-control-lg" required autocomplete="current-password">
+                      <div class="input-group input-group-lg">
+                        <input id="login-password" type="password" class="form-control" required autocomplete="current-password">
+                        <button
+                          class="btn btn-outline-secondary password-toggle"
+                          type="button"
+                          data-password-toggle="login-password"
+                          aria-label="Tampilkan password"
+                          aria-pressed="false"
+                          title="Tampilkan password"
+                        >
+                          <i class="bi bi-eye" aria-hidden="true"></i>
+                        </button>
+                      </div>
                     </div>
                     <button id="login-button" type="submit" class="btn btn-dark btn-lg w-100">Masuk</button>
                   </form>
@@ -74,7 +87,19 @@
                     </div>
                     <div class="mb-4">
                       <label for="register-password" class="form-label">Password</label>
-                      <input id="register-password" type="password" minlength="8" class="form-control" required autocomplete="new-password">
+                      <div class="input-group">
+                        <input id="register-password" type="password" minlength="8" class="form-control" required autocomplete="new-password">
+                        <button
+                          class="btn btn-outline-secondary password-toggle"
+                          type="button"
+                          data-password-toggle="register-password"
+                          aria-label="Tampilkan password"
+                          aria-pressed="false"
+                          title="Tampilkan password"
+                        >
+                          <i class="bi bi-eye" aria-hidden="true"></i>
+                        </button>
+                      </div>
                       <div class="form-text">Minimal 8 karakter.</div>
                     </div>
                     <button id="register-button" type="submit" class="btn btn-dark w-100">Buat akun dosen</button>
