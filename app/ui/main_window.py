@@ -11,6 +11,7 @@ from PySide6.QtWidgets import (
 )
 
 from app.ui.pages.dashboard import DashboardPage
+from app.ui.pages.review import ReviewPage
 from app.ui.pages.students import StudentsPage
 from app.ui.pages.theses import ThesesPage
 
@@ -80,11 +81,7 @@ class MainWindow(QMainWindow):
         self.dashboard_page = DashboardPage()
         self.students_page = StudentsPage()
         self.theses_page = ThesesPage()
-        self.review_page = PlaceholderPage(
-            "Koreksi",
-            "Modul koreksi dokumen akan menggunakan data versi proposal/skripsi "
-            "dan tabel komentar yang sudah tersedia di database lokal.",
-        )
+        self.review_page = ReviewPage()
         self.finalization_page = PlaceholderPage(
             "Finalisasi",
             "Tahap finalisasi akan menangani dokumen akhir, abstrak, keyword, "
