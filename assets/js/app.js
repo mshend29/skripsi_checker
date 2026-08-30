@@ -665,8 +665,6 @@ async function openEditThesis(id) {
   $('#thesis-current-stage').value = thesis.current_stage || '';
   $('#thesis-start-date').value = thesis.start_date || '';
   $('#thesis-approved-date').value = thesis.approved_date || '';
-  $('#thesis-keywords').value = Array.isArray(thesis.keywords) ? thesis.keywords.join(', ') : '';
-  $('#thesis-abstract').value = thesis.abstract || '';
   thesisFormModal.show();
 }
 
@@ -684,11 +682,6 @@ async function saveThesis(event) {
     return;
   }
 
-  const keywords = $('#thesis-keywords').value
-    .split(',')
-    .map((item) => item.trim())
-    .filter(Boolean);
-
   const payload = {
     student_id: studentId,
     title,
@@ -699,8 +692,6 @@ async function saveThesis(event) {
     current_stage: $('#thesis-current-stage').value || null,
     start_date: $('#thesis-start-date').value || null,
     approved_date: $('#thesis-approved-date').value || null,
-    abstract: $('#thesis-abstract').value.trim() || null,
-    keywords: keywords.length ? keywords : null,
   };
 
   if (!id) {
@@ -823,8 +814,6 @@ function renderProposalPreview(result) {
 
   $('#proposal-review-title').value = result.metadata.title || '';
   $('#proposal-review-type').value = result.metadata.research_type || '';
-  $('#proposal-review-keywords').value = (result.metadata.keywords || []).join(', ');
-  $('#proposal-review-abstract').value = result.metadata.abstract || '';
 
   const selectedStudentId = $('#proposal-student-id').value;
   const matchedStudent = matchStudentFromProposal(result.metadata);
@@ -967,19 +956,14 @@ async function saveProposalImport(event) {
     return;
   }
 
-  const keywords = $('#proposal-review-keywords').value
-    .split(',')
-    .map((item) => item.trim())
-    .filter(Boolean);
-
   const { data, error } = await supabase.rpc('create_thesis_from_proposal', {
     p_student_id: studentId,
     p_title: title,
     p_title_en: null,
     p_research_type: $('#proposal-review-type').value || null,
     p_research_field: $('#proposal-review-field').value.trim() || null,
-    p_abstract: $('#proposal-review-abstract').value.trim() || null,
-    p_keywords: keywords.length ? keywords : null,
+    p_abstract: null,
+    p_keywords: null,
     p_file_name: parsedProposal.file.name,
     p_file_path: path,
     p_file_type: parsedProposal.file_type,
@@ -1109,9 +1093,7 @@ async function openThesisDetail(id) {
   $('#detail-thesis-field').textContent = valueOrDash(thesis.research_field);
   $('#detail-thesis-start-date').textContent = formatDate(thesis.start_date);
   $('#detail-thesis-approved-date').textContent = formatDate(thesis.approved_date);
-  $('#detail-thesis-keywords').textContent = Array.isArray(thesis.keywords) && thesis.keywords.length ? thesis.keywords.join(', ') : '-';
   $('#detail-thesis-title-en').textContent = valueOrDash(thesis.title_en);
-  $('#detail-thesis-abstract').textContent = valueOrDash(thesis.abstract);
   $('#detail-thesis-sections').innerHTML = '<div class="text-secondary small py-3"><span class="spinner-border spinner-border-sm me-2"></span>Memuat struktur…</div>';
 
   thesisDetailModal.show();
