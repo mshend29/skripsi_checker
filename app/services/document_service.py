@@ -33,6 +33,45 @@ def extract_text(file_path: str | Path) -> str:
     raise ValueError("Format dokumen belum didukung. Gunakan DOCX atau PDF.")
 
 
+def extract_sections(text: str) -> list[str]:
+    lines = [re.sub(r"\s+", " ", line).strip() for line in text.splitlines()]
+    sections: list[str] = []
+    seen: set[str] = set()
+
+    patterns = [
+        re.compile(r"^BAB\s+[IVXLCDM]+(?:\s*[-.:]?\s*.*)?$", re.IGNORECASE),
+        re.compile(r"^\d+(?:\.\d+){1,3}\s+.+$"),
+    ]
+
+    for line in lines:
+        if not line or len(line) > 180:
+            continue
+
+        is_heading = any(pattern.match(line) for pattern in patterns)
+
+        if not is_heading:
+            words = line.split()
+            if 1 < len(words) <= 10 and len(line) <= 100:
+                letters = [char for char in line if char.isalpha()]
+                if letters and line.upper() == line:
+                    is_heading = True
+
+        if not is_heading:
+            continue
+
+        key = line.casefold()
+        if key in seen:
+            continue
+
+        seen.add(key)
+        sections.append(line)
+
+        if len(sections) >= 150:
+            break
+
+    return sections
+
+
 def detect_title(text: str) -> str:
     lines = [re.sub(r"\s+", " ", line).strip() for line in text.splitlines()]
     lines = [line for line in lines if line]
