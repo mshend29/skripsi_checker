@@ -851,6 +851,57 @@
     </div>
   </div>
 
+  <div class="modal fade" id="revisionUploadModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-xl modal-dialog-scrollable">
+      <div class="modal-content border-0 rounded-4">
+        <div class="modal-header">
+          <div>
+            <h5 class="modal-title fw-bold">Upload Revisi Dokumen</h5>
+            <div class="text-secondary small"><span id="revision-document-name"></span> · <span id="revision-current-version"></span></div>
+          </div>
+          <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+        </div>
+        <form id="revision-upload-form">
+          <div class="modal-body">
+            <div id="revision-upload-alert"></div>
+            <div id="revision-file-step">
+              <label for="revision-file" class="form-label">File revisi mahasiswa</label>
+              <input id="revision-file" type="file" class="form-control" accept=".docx,.pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document,application/pdf" required>
+              <div class="form-text">DOCX direkomendasikan. Maksimal 20 MB.</div>
+              <div id="revision-processing" class="d-none mt-4">
+                <div class="card bg-light border-0"><div class="card-body d-flex align-items-center gap-3">
+                  <div class="spinner-border spinner-border-sm"></div>
+                  <div><div class="fw-semibold">Membandingkan versi…</div><div id="revision-processing-text" class="text-secondary small"></div></div>
+                </div></div>
+              </div>
+            </div>
+            <div id="revision-compare-step" class="d-none">
+              <div class="revision-summary-grid mb-4">
+                <div><div class="small text-secondary">Dari</div><div id="revision-summary-from" class="fw-bold"></div></div>
+                <div><div class="small text-secondary">Menjadi</div><div id="revision-summary-to" class="fw-bold"></div></div>
+                <div><div class="small text-secondary">File baru</div><div id="revision-summary-file" class="fw-semibold"></div></div>
+                <div><div class="small text-secondary">Komentar terdampak</div><div id="revision-comments-impacted" class="fw-bold"></div></div>
+              </div>
+              <div class="row g-2 mb-4">
+                <div class="col-6 col-md-3"><div class="revision-stat"><span id="revision-count-unchanged">0</span><small>Tidak berubah</small></div></div>
+                <div class="col-6 col-md-3"><div class="revision-stat"><span id="revision-count-modified">0</span><small>Diubah</small></div></div>
+                <div class="col-6 col-md-3"><div class="revision-stat"><span id="revision-count-added">0</span><small>Ditambah</small></div></div>
+                <div class="col-6 col-md-3"><div class="revision-stat"><span id="revision-count-deleted">0</span><small>Dihapus</small></div></div>
+              </div>
+              <div class="alert alert-info small"><i class="bi bi-info-circle me-2"></i>Komentar pada paragraf yang berubah akan diberi status <strong>Sudah Direvisi</strong>, bukan otomatis Selesai.</div>
+              <div id="revision-change-preview" class="revision-change-preview"></div>
+            </div>
+          </div>
+          <div class="modal-footer">
+            <button id="revision-back-button" type="button" class="btn btn-light d-none">Kembali</button>
+            <button type="button" class="btn btn-light" data-bs-dismiss="modal">Batal</button>
+            <button id="revision-save-button" type="submit" class="btn btn-dark d-none"><i class="bi bi-cloud-arrow-up me-1"></i>Simpan Version Baru</button>
+          </div>
+        </form>
+      </div>
+    </div>
+  </div>
+
   <div class="modal fade" id="reviewCommentModal" tabindex="-1" aria-hidden="true">
     <div class="modal-dialog modal-lg modal-dialog-scrollable">
       <div class="modal-content border-0 rounded-4">
