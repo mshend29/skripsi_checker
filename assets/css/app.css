@@ -634,3 +634,42 @@ body {
     padding: .75rem 2.6rem .75rem 2.35rem;
   }
 }
+
+
+.review-paragraph-comment-action {
+  position: absolute;
+  right: .65rem;
+  bottom: .55rem;
+  border: 1px solid #dee2e6;
+  border-radius: 999px;
+  background: #fff;
+  color: #212529;
+  font-size: .72rem;
+  font-weight: 600;
+  padding: .25rem .55rem;
+  opacity: 0;
+  transform: translateY(2px);
+  transition: opacity .15s ease, transform .15s ease, border-color .15s ease;
+  cursor: pointer;
+}
+
+.review-paragraph:hover .review-paragraph-comment-action,
+.review-paragraph.is-selected .review-paragraph-comment-action {
+  opacity: 1;
+  transform: translateY(0);
+}
+
+.review-paragraph-comment-action:hover {
+  border-color: #212529;
+}
+
+@media (max-width: 767.98px) {
+  .review-paragraph-comment-action {
+    position: static;
+    display: inline-flex;
+    align-items: center;
+    margin-top: .65rem;
+    opacity: 1;
+    transform: none;
+  }
+}
