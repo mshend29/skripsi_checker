@@ -1,7 +1,10 @@
 import { createClient } from 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.57.4/+esm';
 import { SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY } from './config.js';
+import { parseProposalFile } from './proposal-parser.js';
 
 const supabase = createClient(SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY);
+const DOCUMENT_BUCKET = 'thesis-documents';
+const MAX_PROPOSAL_BYTES = 20 * 1024 * 1024;
 
 const $ = (selector) => document.querySelector(selector);
 const $$ = (selector) => document.querySelectorAll(selector);
@@ -18,10 +21,14 @@ let thesesCache = [];
 let detailStudentId = null;
 let archiveStudentId = null;
 let detailThesisId = null;
+let pendingThesisStudentId = '';
+let parsedProposal = null;
 
 const studentFormModal = new bootstrap.Modal($('#studentFormModal'));
 const studentDetailModal = new bootstrap.Modal($('#studentDetailModal'));
 const archiveStudentModal = new bootstrap.Modal($('#archiveStudentModal'));
+const thesisStartModal = new bootstrap.Modal($('#thesisStartModal'));
+const proposalImportModal = new bootstrap.Modal($('#proposalImportModal'));
 const thesisFormModal = new bootstrap.Modal($('#thesisFormModal'));
 const thesisDetailModal = new bootstrap.Modal($('#thesisDetailModal'));
 
@@ -54,9 +61,7 @@ function clearAlert(target) {
 }
 
 function setButtonBusy(button, busy, busyText) {
-  if (!button.dataset.defaultText) {
-    button.dataset.defaultText = button.textContent;
-  }
+  if (!button.dataset.defaultText) button.dataset.defaultText = button.textContent;
   button.disabled = busy;
   button.textContent = busy ? busyText : button.dataset.defaultText;
 }
@@ -75,6 +80,13 @@ function formatDate(value) {
     month: 'short',
     year: 'numeric',
   }).format(date);
+}
+
+function formatBytes(bytes = 0) {
+  if (!Number.isFinite(bytes) || bytes <= 0) return '0 B';
+  const units = ['B', 'KB', 'MB', 'GB'];
+  const index = Math.min(Math.floor(Math.log(bytes) / Math.log(1024)), units.length - 1);
+  return `${(bytes / (1024 ** index)).toFixed(index === 0 ? 0 : 1)} ${units[index]}`;
 }
 
 function studentStatusBadge(status) {
@@ -107,6 +119,20 @@ function researchTypeLabel(type) {
     qualitative: 'Kualitatif',
     mixed: 'Mixed Method',
   })[type] || '-';
+}
+
+function normalizeIdentity(value = '') {
+  return String(value).toLowerCase().replace(/[^a-z0-9]/g, '');
+}
+
+function safeFileName(name = 'proposal.docx') {
+  const cleaned = name
+    .normalize('NFKD')
+    .replace(/[^a-zA-Z0-9._-]+/g, '-')
+    .replace(/-+/g, '-')
+    .replace(/^-|-$/g, '');
+
+  return cleaned || 'proposal.docx';
 }
 
 function initPasswordToggles() {
@@ -228,6 +254,19 @@ async function loadStudents() {
 
   studentsCache = data || [];
   renderStudents();
+}
+
+async function ensureStudentsLoaded() {
+  if (studentsCache.length) return;
+
+  const { data, error } = await supabase
+    .from('students')
+    .select('id,nim,full_name,email,phone,study_program,faculty,year_entry,status,notes,created_at,updated_at')
+    .is('deleted_at', null)
+    .order('full_name', { ascending: true });
+
+  if (error) throw error;
+  studentsCache = data || [];
 }
 
 function getFilteredStudents() {
@@ -381,6 +420,7 @@ async function renderStudentTheses(studentId) {
 function openArchiveStudent(id) {
   const student = findStudent(id);
   if (!student) return;
+
   archiveStudentId = id;
   $('#archive-student-name').textContent = student.full_name;
   archiveStudentModal.show();
@@ -461,27 +501,19 @@ async function archiveStudent() {
   showAlert(globalAlert, 'Mahasiswa berhasil diarsipkan.', 'success');
 }
 
-async function ensureStudentsLoaded() {
-  if (studentsCache.length) return;
-  const { data, error } = await supabase
-    .from('students')
-    .select('id,nim,full_name,email,phone,study_program,faculty,year_entry,status,notes,created_at,updated_at')
-    .is('deleted_at', null)
-    .order('full_name', { ascending: true });
-
-  if (error) throw error;
-  studentsCache = data || [];
-}
-
-async function populateThesisStudentSelect(selectedId = '') {
+async function populateStudentSelect(select, selectedId = '') {
   await ensureStudentsLoaded();
-  const select = $('#thesis-student-id');
+
   select.innerHTML = '<option value="">Pilih mahasiswa…</option>' + studentsCache
     .filter((student) => student.status !== 'nonaktif')
     .map((student) => `<option value="${student.id}">${escapeHtml(student.full_name)} — ${escapeHtml(student.nim)}</option>`)
     .join('');
 
   select.value = selectedId || '';
+}
+
+async function populateThesisStudentSelect(selectedId = '') {
+  await populateStudentSelect($('#thesis-student-id'), selectedId);
 }
 
 async function loadTheses() {
@@ -585,8 +617,14 @@ function resetThesisForm() {
   clearAlert($('#thesis-form-alert'));
 }
 
+async function openThesisStart(studentId = '') {
+  pendingThesisStudentId = studentId || '';
+  thesisStartModal.show();
+}
+
 async function openAddThesis(studentId = '') {
   resetThesisForm();
+
   try {
     await populateThesisStudentSelect(studentId);
     thesisFormModal.show();
@@ -604,6 +642,7 @@ async function openEditThesis(id) {
       .select('id,student_id,title,title_en,research_type,research_field,status,current_stage,start_date,approved_date,abstract,keywords')
       .eq('id', id)
       .single();
+
     if (error) {
       showAlert(globalAlert, error.message);
       return;
@@ -628,7 +667,6 @@ async function openEditThesis(id) {
   $('#thesis-approved-date').value = thesis.approved_date || '';
   $('#thesis-keywords').value = Array.isArray(thesis.keywords) ? thesis.keywords.join(', ') : '';
   $('#thesis-abstract').value = thesis.abstract || '';
-
   thesisFormModal.show();
 }
 
@@ -725,13 +763,328 @@ async function saveThesis(event) {
 
   thesisFormModal.hide();
   await Promise.all([loadTheses(), loadDashboardStats()]);
-
-  if (detailStudentId === studentId && bootstrap.Modal.getInstance($('#studentDetailModal'))) {
-    await renderStudentTheses(studentId);
-  }
-
   await showView('theses');
   showAlert(globalAlert, id ? 'Data skripsi berhasil diperbarui.' : 'Skripsi berhasil dibuat beserta struktur BAB awal.', 'success');
+}
+
+function resetProposalImport() {
+  parsedProposal = null;
+  $('#proposal-import-form').reset();
+  clearAlert($('#proposal-import-alert'));
+  $('#proposal-upload-step').classList.remove('d-none');
+  $('#proposal-review-step').classList.add('d-none');
+  $('#proposal-processing').classList.add('d-none');
+  $('#proposal-save-button').classList.add('d-none');
+  $('#proposal-back-button').classList.add('d-none');
+  $('#proposal-detected-identity').textContent = '';
+  $('#proposal-warnings').innerHTML = '';
+  $('#proposal-detected-sections').innerHTML = '';
+  $('#proposal-text-preview').innerHTML = '';
+}
+
+async function openProposalImport(studentId = '') {
+  resetProposalImport();
+
+  try {
+    await ensureStudentsLoaded();
+    await populateStudentSelect($('#proposal-student-id'), studentId);
+    await populateStudentSelect($('#proposal-review-student'), studentId);
+    proposalImportModal.show();
+  } catch (error) {
+    showAlert(globalAlert, `Import proposal gagal disiapkan: ${error.message}`);
+  }
+}
+
+function matchStudentFromProposal(metadata) {
+  if (!studentsCache.length) return null;
+
+  if (metadata.nim) {
+    const exactNim = studentsCache.find((student) =>
+      normalizeIdentity(student.nim) === normalizeIdentity(metadata.nim)
+    );
+    if (exactNim) return exactNim;
+  }
+
+  if (metadata.student_name) {
+    const exactName = studentsCache.find((student) =>
+      normalizeIdentity(student.full_name) === normalizeIdentity(metadata.student_name)
+    );
+    if (exactName) return exactName;
+  }
+
+  return null;
+}
+
+function renderProposalPreview(result) {
+  $('#proposal-summary-file').textContent = `${result.file.name} · ${formatBytes(result.file_size)}`;
+  $('#proposal-summary-words').textContent = new Intl.NumberFormat('id-ID').format(result.word_count || 0);
+  $('#proposal-summary-paragraphs').textContent = new Intl.NumberFormat('id-ID').format(result.paragraphs.length);
+  $('#proposal-summary-sections').textContent = result.sections.length;
+
+  $('#proposal-review-title').value = result.metadata.title || '';
+  $('#proposal-review-type').value = result.metadata.research_type || '';
+  $('#proposal-review-keywords').value = (result.metadata.keywords || []).join(', ');
+  $('#proposal-review-abstract').value = result.metadata.abstract || '';
+
+  const selectedStudentId = $('#proposal-student-id').value;
+  const matchedStudent = matchStudentFromProposal(result.metadata);
+  const finalStudentId = selectedStudentId || matchedStudent?.id || '';
+
+  $('#proposal-review-student').value = finalStudentId;
+
+  const selectedStudent = studentsCache.find((student) => student.id === finalStudentId);
+  $('#proposal-review-field').value = selectedStudent?.study_program || '';
+
+  const detectedParts = [];
+  if (result.metadata.student_name) detectedParts.push(`Nama terdeteksi: ${result.metadata.student_name}`);
+  if (result.metadata.nim) detectedParts.push(`NIM terdeteksi: ${result.metadata.nim}`);
+  if (matchedStudent) detectedParts.push(`Cocok dengan: ${matchedStudent.full_name}`);
+  $('#proposal-detected-identity').textContent = detectedParts.join(' · ') || 'Identitas mahasiswa belum terdeteksi otomatis.';
+
+  $('#proposal-detected-sections').innerHTML = result.sections.map((section) => `
+    <div class="list-group-item">
+      <div class="fw-semibold">${escapeHtml(section.section_code || '')} ${section.section_code ? '—' : ''} ${escapeHtml(section.section_title)}</div>
+      <div class="text-secondary small">${escapeHtml(section.section_type)}</div>
+    </div>
+  `).join('');
+
+  const previewParagraphs = result.paragraphs.slice(0, 40);
+  $('#proposal-text-preview').innerHTML = previewParagraphs.map((paragraph) => `
+    <div class="proposal-preview-paragraph ${paragraph.paragraph_type === 'heading' ? 'is-heading' : ''}">
+      ${escapeHtml(paragraph.text_content)}
+    </div>
+  `).join('') + (result.paragraphs.length > previewParagraphs.length
+    ? `<div class="text-secondary small mt-3">…dan ${result.paragraphs.length - previewParagraphs.length} paragraf lainnya.</div>`
+    : '');
+
+  if (result.warnings?.length) {
+    $('#proposal-warnings').innerHTML = `
+      <div class="alert alert-warning mb-0">
+        <div class="fw-semibold mb-1">Catatan parser</div>
+        <ul class="mb-0 small">
+          ${result.warnings.slice(0, 5).map((warning) => `<li>${escapeHtml(warning)}</li>`).join('')}
+        </ul>
+      </div>
+    `;
+  }
+}
+
+async function handleProposalFile(file) {
+  clearAlert($('#proposal-import-alert'));
+
+  if (!file) return;
+
+  if (file.size > MAX_PROPOSAL_BYTES) {
+    showAlert($('#proposal-import-alert'), 'Ukuran file melebihi batas 20 MB.');
+    $('#proposal-file').value = '';
+    return;
+  }
+
+  const extension = file.name.split('.').pop()?.toLowerCase();
+  if (!['docx', 'pdf'].includes(extension)) {
+    showAlert($('#proposal-import-alert'), 'Gunakan file DOCX atau PDF.');
+    $('#proposal-file').value = '';
+    return;
+  }
+
+  $('#proposal-processing').classList.remove('d-none');
+  $('#proposal-processing-text').textContent = extension === 'docx'
+    ? 'Membaca struktur Word, heading, paragraf, dan metadata proposal.'
+    : 'Membaca teks PDF dan mendeteksi struktur berdasarkan pola dokumen.';
+
+  try {
+    parsedProposal = await parseProposalFile(file);
+    renderProposalPreview(parsedProposal);
+
+    $('#proposal-upload-step').classList.add('d-none');
+    $('#proposal-review-step').classList.remove('d-none');
+    $('#proposal-save-button').classList.remove('d-none');
+    $('#proposal-back-button').classList.remove('d-none');
+  } catch (error) {
+    parsedProposal = null;
+    showAlert($('#proposal-import-alert'), `Proposal gagal dibaca: ${error.message}`);
+  } finally {
+    $('#proposal-processing').classList.add('d-none');
+  }
+}
+
+async function saveProposalImport(event) {
+  event.preventDefault();
+  clearAlert($('#proposal-import-alert'));
+
+  if (!parsedProposal) {
+    showAlert($('#proposal-import-alert'), 'Pilih dan baca file proposal terlebih dahulu.');
+    return;
+  }
+
+  const studentId = $('#proposal-review-student').value;
+  const title = $('#proposal-review-title').value.trim();
+
+  if (!studentId || !title) {
+    showAlert($('#proposal-import-alert'), 'Mahasiswa dan judul skripsi wajib dikonfirmasi.');
+    return;
+  }
+
+  const { data: activeThesis, error: activeError } = await supabase
+    .from('theses')
+    .select('id,title,status')
+    .eq('student_id', studentId)
+    .neq('status', 'completed')
+    .is('deleted_at', null)
+    .limit(1);
+
+  if (activeError) {
+    showAlert($('#proposal-import-alert'), activeError.message);
+    return;
+  }
+
+  if (activeThesis?.length) {
+    showAlert($('#proposal-import-alert'), 'Mahasiswa ini sudah memiliki skripsi aktif. Gunakan modul dokumen/versioning untuk upload revisi berikutnya.');
+    return;
+  }
+
+  const button = $('#proposal-save-button');
+  setButtonBusy(button, true, 'Mengunggah & menyimpan…');
+
+  const importId = crypto.randomUUID();
+  const path = `${currentUser.id}/${studentId}/proposal-imports/${importId}/${safeFileName(parsedProposal.file.name)}`;
+
+  const fallbackContentType = parsedProposal.file_type === 'pdf'
+    ? 'application/pdf'
+    : 'application/vnd.openxmlformats-officedocument.wordprocessingml.document';
+
+  const { error: uploadError } = await supabase.storage
+    .from(DOCUMENT_BUCKET)
+    .upload(path, parsedProposal.file, {
+      cacheControl: '3600',
+      upsert: false,
+      contentType: parsedProposal.file.type || fallbackContentType,
+    });
+
+  if (uploadError) {
+    setButtonBusy(button, false, '');
+    showAlert($('#proposal-import-alert'), `Upload file gagal: ${uploadError.message}`);
+    return;
+  }
+
+  const keywords = $('#proposal-review-keywords').value
+    .split(',')
+    .map((item) => item.trim())
+    .filter(Boolean);
+
+  const { data, error } = await supabase.rpc('create_thesis_from_proposal', {
+    p_student_id: studentId,
+    p_title: title,
+    p_title_en: null,
+    p_research_type: $('#proposal-review-type').value || null,
+    p_research_field: $('#proposal-review-field').value.trim() || null,
+    p_abstract: $('#proposal-review-abstract').value.trim() || null,
+    p_keywords: keywords.length ? keywords : null,
+    p_file_name: parsedProposal.file.name,
+    p_file_path: path,
+    p_file_type: parsedProposal.file_type,
+    p_file_size: parsedProposal.file_size,
+    p_file_hash: parsedProposal.file_hash,
+    p_extracted_text: parsedProposal.extracted_text,
+    p_word_count: parsedProposal.word_count,
+    p_sections: parsedProposal.sections,
+    p_paragraphs: parsedProposal.paragraphs,
+  });
+
+  setButtonBusy(button, false, '');
+
+  if (error) {
+    await supabase.storage.from(DOCUMENT_BUCKET).remove([path]);
+    showAlert($('#proposal-import-alert'), `Data skripsi gagal dibuat: ${error.message}`);
+    return;
+  }
+
+  proposalImportModal.hide();
+  parsedProposal = null;
+
+  await Promise.all([loadTheses(), loadDashboardStats()]);
+  await showView('theses');
+  showAlert(globalAlert, 'Proposal berhasil diimport. Skripsi, struktur, dokumen Version 1, dan paragraf berhasil dibuat otomatis.', 'success');
+
+  const thesisId = data?.thesis_id;
+  if (thesisId) setTimeout(() => openThesisDetail(thesisId), 250);
+}
+
+async function loadThesisDocuments(thesisId) {
+  const container = $('#detail-thesis-documents');
+  container.innerHTML = '<div class="text-secondary small py-2"><span class="spinner-border spinner-border-sm me-2"></span>Memuat dokumen…</div>';
+
+  const { data: documents, error } = await supabase
+    .from('documents')
+    .select('id,document_name,document_type,status,current_version_id')
+    .eq('thesis_id', thesisId)
+    .is('deleted_at', null)
+    .order('created_at', { ascending: true });
+
+  if (error) {
+    container.innerHTML = `<div class="alert alert-warning mb-0">${escapeHtml(error.message)}</div>`;
+    return;
+  }
+
+  if (!documents?.length) {
+    container.innerHTML = '<div class="empty-inline">Belum ada dokumen yang diunggah.</div>';
+    return;
+  }
+
+  const documentCards = [];
+
+  for (const documentRecord of documents) {
+    const { data: versions, error: versionError } = await supabase
+      .from('document_versions')
+      .select('id,version_number,file_name,file_path,file_type,file_size,word_count,review_status,uploaded_at')
+      .eq('document_id', documentRecord.id)
+      .is('deleted_at', null)
+      .order('version_number', { ascending: false });
+
+    if (versionError) continue;
+
+    const latest = versions?.[0];
+
+    documentCards.push(`
+      <div class="document-card">
+        <div class="d-flex flex-wrap justify-content-between align-items-start gap-3">
+          <div>
+            <div class="fw-semibold"><i class="bi bi-file-earmark-text me-2"></i>${escapeHtml(documentRecord.document_name)}</div>
+            <div class="text-secondary small mt-1">
+              ${latest ? `Version ${latest.version_number} · ${escapeHtml(latest.file_type.toUpperCase())} · ${formatBytes(latest.file_size || 0)} · ${new Intl.NumberFormat('id-ID').format(latest.word_count || 0)} kata` : 'Belum ada versi'}
+            </div>
+          </div>
+          ${latest ? `
+            <button type="button" class="btn btn-sm btn-outline-secondary"
+              data-document-download="${escapeHtml(latest.file_path)}"
+              data-document-name="${escapeHtml(latest.file_name)}">
+              <i class="bi bi-download me-1"></i>Download
+            </button>
+          ` : ''}
+        </div>
+      </div>
+    `);
+  }
+
+  container.innerHTML = documentCards.join('');
+}
+
+async function downloadStoredDocument(path, fileName) {
+  const { data, error } = await supabase.storage.from(DOCUMENT_BUCKET).download(path);
+
+  if (error) {
+    showAlert(globalAlert, `Dokumen gagal diunduh: ${error.message}`);
+    return;
+  }
+
+  const url = URL.createObjectURL(data);
+  const anchor = document.createElement('a');
+  anchor.href = url;
+  anchor.download = fileName || 'dokumen';
+  document.body.appendChild(anchor);
+  anchor.click();
+  anchor.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
 }
 
 async function openThesisDetail(id) {
@@ -763,19 +1116,26 @@ async function openThesisDetail(id) {
 
   thesisDetailModal.show();
 
-  const { data: sections, error: sectionsError } = await supabase
+  const sectionsPromise = supabase
     .from('thesis_sections')
     .select('id,section_code,section_title,section_type,sort_order,status')
     .eq('thesis_id', id)
     .is('deleted_at', null)
     .order('sort_order', { ascending: true });
 
+  const [, sectionsResult] = await Promise.all([
+    loadThesisDocuments(id),
+    sectionsPromise,
+  ]);
+
   const container = $('#detail-thesis-sections');
 
-  if (sectionsError) {
-    container.innerHTML = `<div class="alert alert-warning mb-0">${escapeHtml(sectionsError.message)}</div>`;
+  if (sectionsResult.error) {
+    container.innerHTML = `<div class="alert alert-warning mb-0">${escapeHtml(sectionsResult.error.message)}</div>`;
     return;
   }
+
+  const sections = sectionsResult.data;
 
   if (!sections?.length) {
     container.innerHTML = '<div class="empty-inline">Struktur skripsi belum tersedia.</div>';
@@ -887,6 +1247,7 @@ $('#logout-button').addEventListener('click', async () => {
   await supabase.auth.signOut();
   studentsCache = [];
   thesesCache = [];
+  parsedProposal = null;
   currentUser = null;
   await renderApp();
 });
@@ -899,7 +1260,7 @@ $$('[data-view-link]').forEach((link) => {
 });
 
 $$('[data-add-student]').forEach((button) => button.addEventListener('click', openAddStudent));
-$$('[data-add-thesis]').forEach((button) => button.addEventListener('click', () => openAddThesis()));
+$$('[data-add-thesis]').forEach((button) => button.addEventListener('click', () => openThesisStart()));
 
 $('#student-form').addEventListener('submit', saveStudent);
 $('#archive-confirm-button').addEventListener('click', archiveStudent);
@@ -911,6 +1272,36 @@ $('#thesis-form').addEventListener('submit', saveThesis);
 $('#thesis-search').addEventListener('input', renderTheses);
 $('#thesis-status-filter').addEventListener('change', renderTheses);
 $('#thesis-refresh').addEventListener('click', loadTheses);
+
+$('#choose-import-proposal').addEventListener('click', () => {
+  thesisStartModal.hide();
+  setTimeout(() => openProposalImport(pendingThesisStudentId), 180);
+});
+
+$('#choose-manual-thesis').addEventListener('click', () => {
+  thesisStartModal.hide();
+  setTimeout(() => openAddThesis(pendingThesisStudentId), 180);
+});
+
+$('#proposal-file').addEventListener('change', async (event) => {
+  await handleProposalFile(event.target.files?.[0]);
+});
+
+$('#proposal-import-form').addEventListener('submit', saveProposalImport);
+
+$('#proposal-back-button').addEventListener('click', () => {
+  $('#proposal-review-step').classList.add('d-none');
+  $('#proposal-upload-step').classList.remove('d-none');
+  $('#proposal-save-button').classList.add('d-none');
+  $('#proposal-back-button').classList.add('d-none');
+});
+
+$('#proposal-review-student').addEventListener('change', () => {
+  const student = findStudent($('#proposal-review-student').value);
+  if (student && !$('#proposal-review-field').value.trim()) {
+    $('#proposal-review-field').value = student.study_program || '';
+  }
+});
 
 $('#students-table-body').addEventListener('click', async (event) => {
   const detailButton = event.target.closest('[data-student-detail]');
@@ -941,7 +1332,7 @@ $('#detail-student-theses').addEventListener('click', async (event) => {
 $('#detail-add-thesis').addEventListener('click', () => {
   if (!detailStudentId) return;
   studentDetailModal.hide();
-  setTimeout(() => openAddThesis(detailStudentId), 180);
+  setTimeout(() => openThesisStart(detailStudentId), 180);
 });
 
 $('#detail-edit-student').addEventListener('click', () => {
@@ -954,6 +1345,12 @@ $('#detail-edit-thesis').addEventListener('click', () => {
   if (!detailThesisId) return;
   thesisDetailModal.hide();
   setTimeout(() => openEditThesis(detailThesisId), 180);
+});
+
+$('#detail-thesis-documents').addEventListener('click', async (event) => {
+  const button = event.target.closest('[data-document-download]');
+  if (!button) return;
+  await downloadStoredDocument(button.dataset.documentDownload, button.dataset.documentName);
 });
 
 document.addEventListener('click', (event) => {
