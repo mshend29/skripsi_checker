@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from datetime import datetime
 from pathlib import Path
 
 from PySide6.QtCore import Qt, QUrl
@@ -634,6 +635,12 @@ class ThesesPage(QWidget):
             thesis.student_id = payload["student_id"]
             thesis.title = payload["title"]
             thesis.status = payload["status"]
+
+            if payload["status"] == "Selesai":
+                thesis.finalized_at = thesis.finalized_at or datetime.now()
+            else:
+                thesis.finalized_at = None
+
             session.commit()
 
         self.refresh()
