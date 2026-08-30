@@ -4,7 +4,7 @@ import re
 import shutil
 from pathlib import Path
 
-import fitz
+import pymupdf
 from docx import Document as DocxDocument
 
 
@@ -21,7 +21,7 @@ def extract_text(file_path: str | Path) -> str:
         return "\n".join(p.text for p in document.paragraphs if p.text.strip())
 
     if suffix == ".pdf":
-        with fitz.open(path) as document:
+        with pymupdf.open(path) as document:
             return "\n".join(page.get_text("text") for page in document)
 
     raise ValueError("Format dokumen belum didukung. Gunakan DOCX atau PDF.")
