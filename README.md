@@ -97,3 +97,16 @@ pip install -r requirements.txt
 
 Untuk dokumen PDF, komentar tetap tersimpan di database aplikasi, tetapi tidak diekspor
 sebagai komentar Word.
+
+
+## Struktur dan tampilan review
+
+Panel Struktur menggunakan tree view ringkas. BAB yang memiliki subbab tampil dalam keadaan
+tertutup dan dapat dibuka dengan indikator `+`. Halaman awal/judul hanya ditampilkan sebagai
+satu item `Halaman Awal / Halaman Judul`. Jika dokumen memiliki Daftar Isi, struktur BAB/subbab
+diambil dari Daftar Isi tersebut, sementara halaman Daftar Isi sendiri hanya tampil sebagai satu
+item `Daftar Isi`.
+
+Panel dokumen menggunakan tampilan menyerupai lembar Microsoft Word: workspace abu-abu,
+lembar putih, teks hitam Times New Roman, dan paragraf tetap menjadi unit review. Border paragraf
+serta tombol `+ Tambahkan komentar` hanya tampil ketika paragraf di-hover atau sedang dipilih.
