@@ -31,7 +31,7 @@ from sqlalchemy.orm import selectinload
 
 from app.database import SessionLocal
 from app.models import ReviewComment, Thesis, ThesisDocument
-from app.services.docx_html_service import render_docx_html
+from app.services.docx_html_service import write_docx_html_preview
 from app.services.document_service import (
     export_docx_with_comments,
     extract_review_paragraphs,
@@ -685,14 +685,13 @@ class ReviewPage(QWidget):
             counts = self.comment_counts_by_paragraph()
 
             if file_path.suffix.lower() == ".docx":
-                document_html = render_docx_html(
+                preview_html = write_docx_html_preview(
                     file_path,
                     comment_counts=counts,
                 )
-                base_url = QUrl.fromLocalFile(
-                    str(file_path.parent.resolve()) + "/"
+                self.web_view.load(
+                    QUrl.fromLocalFile(str(preview_html.resolve()))
                 )
-                self.web_view.setHtml(document_html, base_url)
                 mode_text = "HTML interaktif langsung dari DOCX"
             else:
                 self.web_view.setHtml(
