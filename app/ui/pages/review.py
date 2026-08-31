@@ -3,7 +3,7 @@ from __future__ import annotations
 from pathlib import Path
 
 from PySide6.QtCore import Qt, QUrl, Signal
-from PySide6.QtGui import QDesktopServices
+from PySide6.QtGui import QDesktopServices, QFont
 from PySide6.QtWidgets import (
     QComboBox,
     QDialog,
@@ -13,8 +13,8 @@ from PySide6.QtWidgets import (
     QFormLayout,
     QHBoxLayout,
     QLabel,
-    QListWidget,
-    QListWidgetItem,
+    QTreeWidget,
+    QTreeWidgetItem,
     QMessageBox,
     QPushButton,
     QScrollArea,
@@ -31,6 +31,7 @@ from app.models import ReviewComment, Thesis, ThesisDocument
 from app.services.document_service import (
     export_docx_with_comments,
     extract_review_paragraphs,
+    extract_review_structure,
     resolve_storage_path,
 )
 
@@ -77,29 +78,16 @@ class ParagraphCard(QFrame):
         super().__init__(parent)
 
         self.paragraph = paragraph
-        self.setObjectName("paragraphCard")
-        self.setFrameShape(QFrame.StyledPanel)
+        self._hovered = False
+        self._highlighted = False
 
-        self.setStyleSheet(
-            "QFrame#paragraphCard {"
-            " background: white;"
-            " border: 1px solid #dedede;"
-            " border-radius: 8px;"
-            "}"
-            "QFrame#paragraphCard:hover { border-color: #999; }"
-        )
+        self.setObjectName("paragraphCard")
+        self.setMouseTracking(True)
+        self.setFrameShape(QFrame.NoFrame)
 
         layout = QHBoxLayout(self)
-        layout.setContentsMargins(12, 10, 10, 10)
-        layout.setSpacing(10)
-
-        number = QLabel(str(paragraph["display_index"]))
-        number.setFixedWidth(28)
-        number.setAlignment(Qt.AlignTop | Qt.AlignHCenter)
-        number.setStyleSheet(
-            "color: #888; font-size: 11px; padding-top: 4px; border: none;"
-        )
-        layout.addWidget(number)
+        layout.setContentsMargins(10, 4, 8, 4)
+        layout.setSpacing(8)
 
         self.text_view = QTextEdit()
         self.text_view.setReadOnly(True)
@@ -107,40 +95,106 @@ class ParagraphCard(QFrame):
         self.text_view.setVerticalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
         self.text_view.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
         self.text_view.setPlainText(paragraph["text"])
+        self.text_view.setStyleSheet(
+            "QTextEdit {"
+            " background: transparent;"
+            " color: #000000;"
+            " border: none;"
+            " padding: 0px;"
+            " selection-background-color: #cfe8ff;"
+            " selection-color: #000000;"
+            "}"
+        )
 
-        font = self.text_view.font()
+        font = QFont("Times New Roman", 12)
         if paragraph["is_heading"]:
             font.setBold(True)
-            font.setPointSize(max(font.pointSize(), 11))
         self.text_view.setFont(font)
 
-        line_count = max(1, paragraph["text"].count("\n") + 1)
-        estimated_lines = max(
-            line_count,
-            (len(paragraph["text"]) // 95) + 1,
+        if paragraph["is_heading"]:
+            self.text_view.setAlignment(Qt.AlignCenter)
+        else:
+            self.text_view.setAlignment(Qt.AlignJustify)
+
+        estimated_lines = max(1, (len(paragraph["text"]) // 82) + 1)
+        base_height = 34 if paragraph["is_heading"] else 28
+        self.text_view.setFixedHeight(
+            min(250, base_height + estimated_lines * 22)
         )
-        self.text_view.setFixedHeight(min(220, 34 + estimated_lines * 22))
         layout.addWidget(self.text_view, 1)
 
         actions = QVBoxLayout()
-        actions.setSpacing(6)
+        actions.setContentsMargins(0, 0, 0, 0)
+        actions.setSpacing(5)
 
         if comment_count:
-            badge = QLabel(f"{comment_count} catatan")
+            badge = QLabel(f"{comment_count}")
             badge.setAlignment(Qt.AlignCenter)
+            badge.setFixedSize(24, 20)
+            badge.setToolTip(f"{comment_count} catatan aktif")
             badge.setStyleSheet(
-                "background: #f3f3f3; border-radius: 9px; "
-                "padding: 3px 7px; color: #555; font-size: 10px;"
+                "background: #f1f1f1; color: #333333; "
+                "border-radius: 9px; font-size: 10px;"
             )
-            actions.addWidget(badge)
+            actions.addWidget(badge, 0, Qt.AlignRight)
 
-        comment_button = QPushButton("Komentar")
-        comment_button.setCursor(Qt.PointingHandCursor)
-        comment_button.clicked.connect(self.request_comment)
-        actions.addWidget(comment_button)
+        self.comment_button = QPushButton("+ Tambahkan komentar")
+        self.comment_button.setCursor(Qt.PointingHandCursor)
+        self.comment_button.setStyleSheet(
+            "QPushButton {"
+            " background: #ffffff;"
+            " color: #111111;"
+            " border: 1px solid #bcbcbc;"
+            " border-radius: 5px;"
+            " padding: 5px 8px;"
+            " font-size: 11px;"
+            "}"
+            "QPushButton:hover { background: #f3f3f3; }"
+        )
+        self.comment_button.clicked.connect(self.request_comment)
+        self.comment_button.hide()
+
+        actions.addWidget(self.comment_button, 0, Qt.AlignRight)
         actions.addStretch()
-
         layout.addLayout(actions)
+
+        self._apply_style()
+
+    def _apply_style(self) -> None:
+        if self._highlighted:
+            border = "2px solid #7a7a7a"
+            background = "#fffde9"
+        elif self._hovered:
+            border = "1px solid #b8b8b8"
+            background = "#ffffff"
+        else:
+            border = "1px solid transparent"
+            background = "#ffffff"
+
+        self.setStyleSheet(
+            "QFrame#paragraphCard {"
+            f" background: {background};"
+            f" border: {border};"
+            " border-radius: 4px;"
+            "}"
+        )
+
+    def set_highlighted(self, highlighted: bool) -> None:
+        self._highlighted = highlighted
+        self.comment_button.setVisible(highlighted or self._hovered)
+        self._apply_style()
+
+    def enterEvent(self, event) -> None:
+        self._hovered = True
+        self.comment_button.show()
+        self._apply_style()
+        super().enterEvent(event)
+
+    def leaveEvent(self, event) -> None:
+        self._hovered = False
+        self.comment_button.setVisible(self._highlighted)
+        self._apply_style()
+        super().leaveEvent(event)
 
     def request_comment(self) -> None:
         selected_text = self.text_view.textCursor().selectedText().strip()
@@ -357,6 +411,7 @@ class ReviewPage(QWidget):
         self.current_file_path: Path | None = None
         self.current_paragraphs: list[dict] = []
         self.paragraph_widgets: dict[int, ParagraphCard] = {}
+        self.highlighted_paragraph_index: int | None = None
         self._loading = False
 
         root = QVBoxLayout(self)
@@ -423,6 +478,10 @@ class ReviewPage(QWidget):
     def build_structure_panel(self) -> QWidget:
         panel = QFrame()
         panel.setFrameShape(QFrame.StyledPanel)
+        panel.setStyleSheet(
+            "QFrame { background: #ffffff; border: 1px solid #d9d9d9; }"
+            "QLabel { border: none; color: #111111; }"
+        )
 
         layout = QVBoxLayout(panel)
         layout.setContentsMargins(12, 12, 12, 12)
@@ -440,15 +499,79 @@ class ReviewPage(QWidget):
         heading.addWidget(self.section_count)
         layout.addLayout(heading)
 
-        self.structure_list = QListWidget()
-        self.structure_list.itemClicked.connect(self.goto_structure_item)
-        layout.addWidget(self.structure_list, 1)
+        self.structure_tree = QTreeWidget()
+        self.structure_tree.setHeaderHidden(True)
+        self.structure_tree.setRootIsDecorated(False)
+        self.structure_tree.setIndentation(16)
+        self.structure_tree.setAnimated(True)
+        self.structure_tree.setStyleSheet(
+            "QTreeWidget {"
+            " background: #ffffff;"
+            " color: #111111;"
+            " border: none;"
+            " outline: none;"
+            "}"
+            "QTreeWidget::item {"
+            " padding: 5px 3px;"
+            " border-radius: 4px;"
+            "}"
+            "QTreeWidget::item:hover { background: #f2f2f2; }"
+            "QTreeWidget::item:selected {"
+            " background: #e8e8e8;"
+            " color: #000000;"
+            "}"
+        )
+        self.structure_tree.itemClicked.connect(self.goto_structure_item)
+        self.structure_tree.itemExpanded.connect(
+            self.update_tree_item_indicator
+        )
+        self.structure_tree.itemCollapsed.connect(
+            self.update_tree_item_indicator
+        )
+        layout.addWidget(self.structure_tree, 1)
 
         return panel
 
+    def populate_structure(self, structure: list[dict]) -> None:
+        self.structure_tree.clear()
+
+        def add_node(parent, node: dict) -> None:
+            item = QTreeWidgetItem()
+            label = node.get("label") or "Bagian"
+            item.setData(0, Qt.UserRole, node.get("paragraph_index"))
+            item.setData(0, Qt.UserRole + 1, label)
+
+            if parent is None:
+                self.structure_tree.addTopLevelItem(item)
+            else:
+                parent.addChild(item)
+
+            for child in node.get("children") or []:
+                add_node(item, child)
+
+            self.update_tree_item_indicator(item)
+
+        for node in structure:
+            add_node(None, node)
+
+        self.structure_tree.collapseAll()
+        self.section_count.setText(str(len(structure)))
+
+    def update_tree_item_indicator(
+        self,
+        item: QTreeWidgetItem,
+    ) -> None:
+        label = item.data(0, Qt.UserRole + 1) or item.text(0)
+        if item.childCount():
+            prefix = "−  " if item.isExpanded() else "+  "
+        else:
+            prefix = "   "
+        item.setText(0, f"{prefix}{label}")
+
     def build_document_panel(self) -> QWidget:
         panel = QFrame()
-        panel.setFrameShape(QFrame.StyledPanel)
+        panel.setFrameShape(QFrame.NoFrame)
+        panel.setStyleSheet("background: #e7e7e7;")
 
         layout = QVBoxLayout(panel)
         layout.setContentsMargins(0, 0, 0, 0)
@@ -456,14 +579,41 @@ class ReviewPage(QWidget):
         self.document_scroll = QScrollArea()
         self.document_scroll.setWidgetResizable(True)
         self.document_scroll.setFrameShape(QFrame.NoFrame)
+        self.document_scroll.setStyleSheet(
+            "QScrollArea { background: #e7e7e7; border: none; }"
+            "QScrollBar:vertical { width: 12px; }"
+        )
 
-        self.document_container = QWidget()
-        self.document_layout = QVBoxLayout(self.document_container)
-        self.document_layout.setContentsMargins(14, 14, 14, 14)
-        self.document_layout.setSpacing(8)
+        self.document_workspace = QWidget()
+        self.document_workspace.setStyleSheet("background: #e7e7e7;")
+        workspace_layout = QVBoxLayout(self.document_workspace)
+        workspace_layout.setContentsMargins(30, 28, 30, 40)
+        workspace_layout.setSpacing(0)
+
+        self.document_page = QFrame()
+        self.document_page.setObjectName("wordPage")
+        self.document_page.setMinimumWidth(660)
+        self.document_page.setMaximumWidth(860)
+        self.document_page.setStyleSheet(
+            "QFrame#wordPage {"
+            " background: #ffffff;"
+            " border: 1px solid #cfcfcf;"
+            "}"
+        )
+
+        self.document_layout = QVBoxLayout(self.document_page)
+        self.document_layout.setContentsMargins(64, 58, 64, 70)
+        self.document_layout.setSpacing(2)
         self.document_layout.addStretch()
 
-        self.document_scroll.setWidget(self.document_container)
+        workspace_layout.addWidget(
+            self.document_page,
+            0,
+            Qt.AlignHCenter | Qt.AlignTop,
+        )
+        workspace_layout.addStretch()
+
+        self.document_scroll.setWidget(self.document_workspace)
         layout.addWidget(self.document_scroll)
 
         return panel
@@ -586,6 +736,7 @@ class ReviewPage(QWidget):
         self.current_file_path = None
         self.current_paragraphs = []
         self.paragraph_widgets = {}
+        self.highlighted_paragraph_index = None
 
         self.clear_layout(self.document_layout)
         self.clear_structure()
@@ -625,41 +776,37 @@ class ReviewPage(QWidget):
                 }
 
             paragraphs = extract_review_paragraphs(file_path)
+            structure = extract_review_structure(
+                file_path,
+                paragraphs=paragraphs,
+            )
+
             self.current_file_path = file_path
             self.current_paragraphs = paragraphs
 
             comment_counts = self.comment_counts_by_paragraph()
 
-            sections: dict[str, int] = {}
             for paragraph in paragraphs:
-                section = paragraph.get("section") or "Awal Dokumen"
-                sections.setdefault(
-                    section,
-                    int(paragraph["paragraph_index"]),
-                )
+                paragraph_index = int(paragraph["paragraph_index"])
 
                 card = ParagraphCard(
                     paragraph,
                     comment_count=comment_counts.get(
-                        int(paragraph["paragraph_index"]),
+                        paragraph_index,
                         0,
                     ),
                 )
-                card.comment_requested.connect(self.add_comment_for_paragraph)
+                card.comment_requested.connect(
+                    self.add_comment_for_paragraph
+                )
+
                 self.document_layout.insertWidget(
                     self.document_layout.count() - 1,
                     card,
                 )
-                self.paragraph_widgets[
-                    int(paragraph["paragraph_index"])
-                ] = card
+                self.paragraph_widgets[paragraph_index] = card
 
-            for section, paragraph_index in sections.items():
-                item = QListWidgetItem(section)
-                item.setData(Qt.UserRole, paragraph_index)
-                self.structure_list.addItem(item)
-
-            self.section_count.setText(str(len(sections)))
+            self.populate_structure(structure)
 
             kind = DOCUMENT_KIND_LABELS.get(
                 document_meta["kind"],
@@ -673,7 +820,9 @@ class ReviewPage(QWidget):
             )
 
         except Exception as exc:
-            self.version_info.setText(f"Dokumen tidak dapat dibaca: {exc}")
+            self.version_info.setText(
+                f"Dokumen tidak dapat dibaca: {exc}"
+            )
 
         self.load_comments()
         self.update_actions()
@@ -686,11 +835,18 @@ class ReviewPage(QWidget):
                 widget.deleteLater()
 
     def clear_structure(self) -> None:
-        self.structure_list.clear()
+        self.structure_tree.clear()
         self.section_count.setText("0")
 
-    def goto_structure_item(self, item: QListWidgetItem) -> None:
-        paragraph_index = item.data(Qt.UserRole)
+    def goto_structure_item(
+        self,
+        item: QTreeWidgetItem,
+        _column: int,
+    ) -> None:
+        if item.childCount():
+            item.setExpanded(not item.isExpanded())
+
+        paragraph_index = item.data(0, Qt.UserRole)
         if paragraph_index is not None:
             self.scroll_to_paragraph(int(paragraph_index))
 
@@ -699,12 +855,18 @@ class ReviewPage(QWidget):
         if widget is None:
             return
 
-        self.document_scroll.ensureWidgetVisible(widget, 10, 30)
+        if (
+            self.highlighted_paragraph_index is not None
+            and self.highlighted_paragraph_index in self.paragraph_widgets
+        ):
+            self.paragraph_widgets[
+                self.highlighted_paragraph_index
+            ].set_highlighted(False)
 
-        widget.setStyleSheet(
-            "QFrame#paragraphCard { background: #fffbe8; "
-            "border: 2px solid #999; border-radius: 8px; }"
-        )
+        self.highlighted_paragraph_index = paragraph_index
+        widget.set_highlighted(True)
+
+        self.document_scroll.ensureWidgetVisible(widget, 30, 45)
 
     def paragraph_data(self, paragraph_index: int) -> dict | None:
         for paragraph in self.current_paragraphs:
