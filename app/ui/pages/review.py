@@ -223,9 +223,8 @@ class PreviewParagraphOverlay(QFrame):
             and self._selection_start is not None
             and (event.buttons() & Qt.LeftButton)
         ):
-            distance = (
-                event.position() - self._press_pos
-            ).manhattanLength()
+            delta = event.position() - self._press_pos
+            distance = abs(delta.x()) + abs(delta.y())
 
             if distance >= 5:
                 self._dragging_selection = True
@@ -555,7 +554,8 @@ class CommentCard(QFrame):
         layout.setContentsMargins(12, 12, 12, 12)
         layout.setSpacing(8)
 
-        badges = QHBoxLayout()
+        badges = QVBoxLayout()
+        badges.setSpacing(4)
         severity = QLabel(comment.get("severity") or "Moderate")
         severity.setStyleSheet(
             "background: #efefef; border-radius: 8px; "
@@ -577,7 +577,6 @@ class CommentCard(QFrame):
         badges.addWidget(severity)
         badges.addWidget(category)
         badges.addWidget(status)
-        badges.addStretch()
         layout.addLayout(badges)
 
         section = QLabel(comment.get("section") or "Awal Dokumen")
@@ -765,6 +764,8 @@ class ReviewPage(QWidget):
             "QLabel { border: none; color: #111111; }"
         )
 
+        panel.setMinimumWidth(120)
+
         layout = QVBoxLayout(panel)
         layout.setContentsMargins(12, 12, 12, 12)
 
@@ -883,23 +884,21 @@ class ReviewPage(QWidget):
     def build_comments_panel(self) -> QWidget:
         panel = QFrame()
         panel.setFrameShape(QFrame.StyledPanel)
+        panel.setMinimumWidth(95)
 
         layout = QVBoxLayout(panel)
         layout.setContentsMargins(12, 12, 12, 12)
         layout.setSpacing(8)
 
-        header = QHBoxLayout()
         title = QLabel("CATATAN REVIEW")
         title.setStyleSheet("font-weight: 700;")
-        header.addWidget(title)
-        header.addStretch()
+        title.setWordWrap(True)
+        layout.addWidget(title)
 
         self.comment_filter = QComboBox()
         self.comment_filter.addItems(["Aktif", "Semua", "Selesai"])
         self.comment_filter.currentTextChanged.connect(self.load_comments)
-        header.addWidget(self.comment_filter)
-
-        layout.addLayout(header)
+        layout.addWidget(self.comment_filter)
 
         self.comment_count = QLabel("0 komentar")
         self.comment_count.setStyleSheet("color: #777; font-size: 11px;")
