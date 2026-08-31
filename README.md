@@ -45,8 +45,10 @@ Script akan menambahkan 6 mahasiswa dummy. Jika NIM dummy sudah ada, record ters
 - Riwayat versi dokumen dan buka file lokal langsung dari aplikasi
 - Penyimpanan dokumen terpisah berdasarkan jenis dan versi
 - Deteksi awal judul dari isi dokumen
-- Koreksi per versi dokumen dengan viewer teks DOCX/PDF
-- Navigasi BAB/subbab hasil deteksi dokumen
+- Workspace koreksi 3 kolom: struktur, paragraf dokumen, dan catatan review
+- Komentar melekat ke paragraf/versi dokumen tertentu
+- Komentar memiliki kategori, tingkat urgensi, status, dan kutipan teks
+- Export DOCX dengan komentar Word native untuk dikembalikan ke mahasiswa
 - Komentar dosen: tambah, edit, selesai/buka kembali, hapus, dan filter status
 - Halaman Finalisasi sebagai tahap pengembangan berikutnya
 
@@ -79,3 +81,19 @@ Script akan menambahkan 6 mahasiswa dummy. Jika NIM dummy sudah ada, record ters
 File proposal/revisi/final tidak disimpan di database. Database hanya menyimpan metadata dan path file. File fisik disimpan di folder `storage/`.
 
 Riwayat Git lama tetap tersedia sehingga versi web sebelumnya masih dapat dilihat dari commit terdahulu.
+
+
+## Export koreksi ke Word
+
+Untuk dokumen sumber DOCX, menu Koreksi menyediakan tombol `Export Word Berkomentar`.
+Aplikasi membuat salinan DOCX dan menanamkan komentar aktif sebagai komentar Word native
+pada paragraf yang dikoreksi. Komentar berstatus Selesai tidak ikut diekspor.
+
+Fitur ini membutuhkan `python-docx >= 1.2`. Setelah melakukan `git pull`, jalankan:
+
+```powershell
+pip install -r requirements.txt
+```
+
+Untuk dokumen PDF, komentar tetap tersimpan di database aplikasi, tetapi tidak diekspor
+sebagai komentar Word.
