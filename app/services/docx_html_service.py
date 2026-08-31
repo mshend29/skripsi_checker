@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import base64
+import hashlib
 import html
 import json
 from pathlib import Path
@@ -9,6 +10,9 @@ from docx import Document as DocxDocument
 from docx.enum.text import WD_ALIGN_PARAGRAPH
 from docx.oxml.ns import qn
 
+
+BASE_DIR = Path(__file__).resolve().parents[2]
+HTML_PREVIEW_DIR = BASE_DIR / "storage" / "html_previews"
 
 A4_WIDTH_MM = 210
 A4_HEIGHT_MM = 297
@@ -699,3 +703,31 @@ def render_docx_html(
 </body>
 </html>
 """
+
+
+
+def write_docx_html_preview(
+    file_path: str | Path,
+    comment_counts: dict[int, int] | None = None,
+) -> Path:
+    source = Path(file_path)
+    stat = source.stat()
+    payload = (
+        f"{source.resolve()}|{stat.st_size}|{stat.st_mtime_ns}|"
+        + json.dumps(comment_counts or {}, sort_keys=True)
+    )
+    digest = hashlib.sha1(payload.encode("utf-8")).hexdigest()[:16]
+
+    HTML_PREVIEW_DIR.mkdir(parents=True, exist_ok=True)
+    target = HTML_PREVIEW_DIR / f"{source.stem}_{digest}.html"
+
+    if not target.exists():
+        target.write_text(
+            render_docx_html(
+                source,
+                comment_counts=comment_counts,
+            ),
+            encoding="utf-8",
+        )
+
+    return target
