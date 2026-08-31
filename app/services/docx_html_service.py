@@ -158,8 +158,22 @@ def _run_images(document, run) -> list[str]:
     return images
 
 
+def _iter_paragraph_runs(paragraph):
+    if hasattr(paragraph, "iter_inner_content"):
+        for item in paragraph.iter_inner_content():
+            if hasattr(item, "_r"):
+                yield item
+                continue
+
+            for run in getattr(item, "runs", []):
+                yield run
+        return
+
+    yield from paragraph.runs
+
+
 def _paragraph_has_page_break(paragraph) -> bool:
-    for run in paragraph.runs:
+    for run in _iter_paragraph_runs(paragraph):
         for node in run._r.iter():
             if node.tag == qn("w:br") and node.get(qn("w:type")) == "page":
                 return True
@@ -169,7 +183,7 @@ def _paragraph_has_page_break(paragraph) -> bool:
 def _render_runs(document, paragraph) -> str:
     parts: list[str] = []
 
-    for run in paragraph.runs:
+    for run in _iter_paragraph_runs(paragraph):
         css = _run_css(run, paragraph)
         text_value = _escape_text(run.text)
         if text_value:
@@ -335,6 +349,35 @@ def _body_blocks(document) -> list[str]:
     return blocks
 
 
+def _page_metrics(document) -> dict[str, float]:
+    if not document.sections:
+        return {
+            "width": A4_WIDTH_MM,
+            "height": A4_HEIGHT_MM,
+            "top": PAGE_MARGIN_TOP_MM,
+            "right": PAGE_MARGIN_RIGHT_MM,
+            "bottom": PAGE_MARGIN_BOTTOM_MM,
+            "left": PAGE_MARGIN_LEFT_MM,
+        }
+
+    section = document.sections[0]
+
+    def mm(value, fallback):
+        try:
+            return float(value.mm)
+        except Exception:
+            return float(fallback)
+
+    return {
+        "width": mm(section.page_width, A4_WIDTH_MM),
+        "height": mm(section.page_height, A4_HEIGHT_MM),
+        "top": mm(section.top_margin, PAGE_MARGIN_TOP_MM),
+        "right": mm(section.right_margin, PAGE_MARGIN_RIGHT_MM),
+        "bottom": mm(section.bottom_margin, PAGE_MARGIN_BOTTOM_MM),
+        "left": mm(section.left_margin, PAGE_MARGIN_LEFT_MM),
+    }
+
+
 def render_docx_html(
     file_path: str | Path,
     comment_counts: dict[int, int] | None = None,
@@ -344,6 +387,7 @@ def render_docx_html(
         raise ValueError("Renderer HTML interaktif membutuhkan file DOCX.")
 
     document = DocxDocument(path)
+    page = _page_metrics(document)
     header_html, footer_html = _header_footer_html(document)
     blocks = _body_blocks(document)
     counts_json = json.dumps(comment_counts or {})
@@ -386,12 +430,12 @@ def render_docx_html(
         position: absolute;
         left: -100000px;
         top: 0;
-        width: {A4_WIDTH_MM - PAGE_MARGIN_LEFT_MM - PAGE_MARGIN_RIGHT_MM}mm;
+        width: {page["width"] - page["left"] - page["right"]:.2f}mm;
         visibility: hidden;
     }}
     .word-page {{
-        width: {A4_WIDTH_MM}mm;
-        height: {A4_HEIGHT_MM}mm;
+        width: {page["width"]:.2f}mm;
+        height: {page["height"]:.2f}mm;
         background: #fff;
         box-shadow: 0 2px 10px rgba(0,0,0,.22);
         position: relative;
@@ -400,8 +444,8 @@ def render_docx_html(
     }}
     .page-header {{
         position: absolute;
-        left: {PAGE_MARGIN_LEFT_MM}mm;
-        right: {PAGE_MARGIN_RIGHT_MM}mm;
+        left: {page["left"]:.2f}mm;
+        right: {page["right"]:.2f}mm;
         top: 8mm;
         min-height: 10mm;
         font-size: 9pt;
@@ -410,8 +454,8 @@ def render_docx_html(
         position: absolute;
         left: {PAGE_MARGIN_LEFT_MM}mm;
         right: {PAGE_MARGIN_RIGHT_MM}mm;
-        top: {PAGE_MARGIN_TOP_MM}mm;
-        bottom: {PAGE_MARGIN_BOTTOM_MM}mm;
+        top: {page["top"]:.2f}mm;
+        bottom: {page["bottom"]:.2f}mm;
         overflow: hidden;
     }}
     .page-footer {{
@@ -677,11 +721,26 @@ def render_docx_html(
     window.scrollToParagraph = scrollToParagraph;
 
     window.addEventListener('DOMContentLoaded', () => {{
-        paginate();
-        setupReview();
-
         new QWebChannel(qt.webChannelTransport, (channel) => {{
             window.reviewBridge = channel.objects.reviewBridge;
+        }});
+
+        const imageWaiters = Array.from(document.images).map((image) => {{
+            if (image.complete) return Promise.resolve();
+
+            return new Promise((resolve) => {{
+                image.addEventListener('load', resolve, {{ once: true }});
+                image.addEventListener('error', resolve, {{ once: true }});
+            }});
+        }});
+
+        const fontsReady = document.fonts
+            ? document.fonts.ready
+            : Promise.resolve();
+
+        Promise.all([fontsReady, ...imageWaiters]).then(() => {{
+            paginate();
+            setupReview();
         }});
     }});
     """
