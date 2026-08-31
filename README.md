@@ -114,26 +114,30 @@ serta tombol `+ Tambahkan komentar` hanya tampil ketika paragraf di-hover atau s
 
 ## Preview dokumen seperti Word
 
-Untuk DOCX, halaman Koreksi tidak membangun ulang teks dengan widget Qt. Dokumen dirender
-menjadi preview PDF lokal menggunakan Microsoft Word pada Windows. Jika Microsoft Word tidak
-tersedia, aplikasi mencoba LibreOffice sebagai fallback. Preview tersebut kemudian ditampilkan
-per halaman dengan jarak antarhalaman, sehingga page break, margin, tabel, gambar, header/footer,
-dan format dokumen mengikuti hasil render dokumen asli.
+Untuk DOCX, halaman Koreksi menggunakan renderer HTML interaktif langsung dari struktur DOCX
+tanpa konversi ke PDF. Hasilnya ditampilkan di `QWebEngineView` dengan halaman putih bergaya
+Word, jarak antarhalaman, paragraf yang dapat di-hover, dan teks yang dapat diblok menggunakan
+selection native browser.
 
-Pada halaman preview, aplikasi memasang overlay komentar di atas paragraf teks yang berhasil
-dipetakan. Overlay tidak terlihat dalam kondisi normal; saat hover, area paragraf diberi border
-dan tombol komentar muncul. Preview PDF disimpan sebagai cache lokal di `storage/previews/`
-dan tidak masuk Git.
+Renderer mempertahankan format penting seperti alignment, indentasi, spacing, bold/italic,
+ukuran dan nama font, tabel, gambar inline, page break eksplisit, serta header/footer dasar.
+Pagination A4 dilakukan secara lokal di HTML. File cache HTML disimpan di
+`storage/html_previews/` dan tidak masuk Git.
+
+Mode komentar memiliki dua perilaku: jika tidak ada teks yang diblok maka seluruh paragraf
+menjadi kutipan; jika ada teks yang diblok di paragraf tersebut maka hanya selection itu yang
+menjadi kutipan. Zoom menggunakan zoom native WebEngine sehingga tidak perlu merender ulang
+gambar halaman.
 
 
 ## Interaksi koreksi dokumen
 
-Area hover paragraf dipetakan dari beberapa blok hasil render sehingga mengikuti paragraf secara
-lebih utuh. Teks pada preview dapat dipilih dengan drag mouse menggunakan koordinat kata dari PDF
-hasil render Word. Jika tidak ada teks yang dipilih, tombol komentar menggunakan seluruh paragraf
-sebagai kutipan. Jika ada teks yang dipilih, hanya teks tersebut yang menjadi kutipan komentar.
+Hover bekerja langsung pada elemen paragraf HTML, bukan overlay koordinat PDF. Selection teks
+menggunakan selection native browser sehingga dosen dapat memblok kata atau kalimat di paragraf.
+Jika tidak ada selection, seluruh paragraf menjadi kutipan komentar; jika ada selection, hanya
+teks yang dipilih yang menjadi kutipan.
 
-Dialog Tambah/Edit Komentar diperbesar dan menggunakan input putih dengan teks hitam serta font
-yang lebih besar. Layout awal modul Koreksi menggunakan rasio Struktur/Dokumen/Komentar 20/70/10
-dan tetap dapat diubah dengan menarik splitter. Panel Dokumen memiliki zoom 50%–200% dengan tombol
-minus, slider, dan plus.
+Dialog Tambah/Edit Komentar menggunakan input putih dengan teks hitam dan font yang lebih besar.
+Layout awal modul Koreksi menggunakan rasio Struktur/Dokumen/Komentar 20/70/10 dan tetap dapat
+diubah dengan menarik splitter. Panel Dokumen memiliki zoom 50%–200% dengan tombol minus, slider,
+dan plus.
