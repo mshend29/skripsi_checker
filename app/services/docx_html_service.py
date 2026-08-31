@@ -127,7 +127,7 @@ def _run_images(document, run) -> list[str]:
         if not rel_id:
             continue
 
-        part = document.part.related_parts.get(rel_id)
+        part = run.part.related_parts.get(rel_id)
         if part is None:
             continue
 
@@ -300,42 +300,33 @@ def _header_footer_html(document) -> tuple[str, str]:
 
 
 def _body_blocks(document) -> list[str]:
-    paragraph_index_by_element = {
-        id(paragraph._p): index
-        for index, paragraph in enumerate(document.paragraphs)
-    }
-    paragraphs_by_element = {
-        id(paragraph._p): paragraph
-        for paragraph in document.paragraphs
-    }
-    tables_by_element = {
-        id(table._tbl): table
-        for table in document.tables
-    }
-
+    paragraph_iter = iter(enumerate(document.paragraphs))
+    table_iter = iter(document.tables)
     blocks: list[str] = []
 
     for child in document.element.body.iterchildren():
-        identity = id(child)
-
         if child.tag == qn("w:p"):
-            paragraph = paragraphs_by_element.get(identity)
-            if paragraph is None:
+            try:
+                paragraph_index, paragraph = next(paragraph_iter)
+            except StopIteration:
                 continue
 
             blocks.append(
                 _render_paragraph(
                     document,
                     paragraph,
-                    paragraph_index_by_element.get(identity),
+                    paragraph_index,
                     reviewable=True,
                 )
             )
 
         elif child.tag == qn("w:tbl"):
-            table = tables_by_element.get(identity)
-            if table is not None:
-                blocks.append(_render_table(document, table))
+            try:
+                table = next(table_iter)
+            except StopIteration:
+                continue
+
+            blocks.append(_render_table(document, table))
 
     return blocks
 
