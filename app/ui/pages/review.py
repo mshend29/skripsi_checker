@@ -111,8 +111,20 @@ class ParagraphCard(QFrame):
             font.setBold(True)
         self.text_view.setFont(font)
 
-        if paragraph["is_heading"]:
+        heading_text = paragraph["text"].strip()
+        center_heading = (
+            heading_text.upper().startswith("BAB ")
+            or (
+                paragraph["is_heading"]
+                and heading_text.upper() == heading_text
+                and len(heading_text) <= 100
+            )
+        )
+
+        if center_heading:
             self.text_view.setAlignment(Qt.AlignCenter)
+        elif paragraph["is_heading"]:
+            self.text_view.setAlignment(Qt.AlignLeft)
         else:
             self.text_view.setAlignment(Qt.AlignJustify)
 
