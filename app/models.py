@@ -75,6 +75,10 @@ class ReviewComment(Base):
         index=True,
     )
     section: Mapped[Optional[str]] = mapped_column(String(200), nullable=True)
+    paragraph_index: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+    selected_text: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    category: Mapped[Optional[str]] = mapped_column(String(50), nullable=True)
+    severity: Mapped[str] = mapped_column(String(30), default="Moderate")
     content: Mapped[str] = mapped_column(Text)
     status: Mapped[str] = mapped_column(String(30), default="Open")
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.now)
