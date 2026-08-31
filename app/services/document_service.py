@@ -1,7 +1,11 @@
 from __future__ import annotations
 
+import hashlib
+import os
 import re
 import shutil
+import subprocess
+from difflib import SequenceMatcher
 from pathlib import Path
 
 import pymupdf
@@ -10,6 +14,7 @@ from docx import Document as DocxDocument
 
 BASE_DIR = Path(__file__).resolve().parents[2]
 STORAGE_DIR = BASE_DIR / "storage"
+PREVIEW_DIR = STORAGE_DIR / "previews"
 
 DOCUMENT_FOLDERS = {
     "proposal": STORAGE_DIR / "proposals",
@@ -592,3 +597,266 @@ def export_docx_with_comments(
     target.parent.mkdir(parents=True, exist_ok=True)
     document.save(target)
     return exported
+
+
+def _preview_cache_path(source: Path) -> Path:
+    stat = source.stat()
+    payload = f"{source.resolve()}|{stat.st_size}|{stat.st_mtime_ns}"
+    digest = hashlib.sha1(payload.encode("utf-8")).hexdigest()[:14]
+    PREVIEW_DIR.mkdir(parents=True, exist_ok=True)
+    return PREVIEW_DIR / f"{source.stem}_{digest}.pdf"
+
+
+def _convert_docx_with_word(source: Path, target: Path) -> None:
+    import pythoncom
+    import win32com.client
+
+    pythoncom.CoInitialize()
+    word = None
+    document = None
+
+    try:
+        word = win32com.client.DispatchEx("Word.Application")
+        word.Visible = False
+        word.DisplayAlerts = 0
+
+        document = word.Documents.Open(
+            str(source.resolve()),
+            ReadOnly=True,
+            AddToRecentFiles=False,
+        )
+        document.ExportAsFixedFormat(
+            OutputFileName=str(target.resolve()),
+            ExportFormat=17,
+            OpenAfterExport=False,
+            OptimizeFor=0,
+            Range=0,
+            Item=0,
+            IncludeDocProps=True,
+            KeepIRM=True,
+            CreateBookmarks=1,
+            DocStructureTags=True,
+            BitmapMissingFonts=True,
+            UseISO19005_1=False,
+        )
+    finally:
+        if document is not None:
+            document.Close(False)
+        if word is not None:
+            word.Quit()
+        pythoncom.CoUninitialize()
+
+
+def _convert_docx_with_libreoffice(source: Path, target: Path) -> None:
+    executable = shutil.which("soffice") or shutil.which("libreoffice")
+    if not executable:
+        raise RuntimeError("LibreOffice tidak ditemukan.")
+
+    target.parent.mkdir(parents=True, exist_ok=True)
+
+    result = subprocess.run(
+        [
+            executable,
+            "--headless",
+            "--convert-to",
+            "pdf",
+            "--outdir",
+            str(target.parent),
+            str(source.resolve()),
+        ],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+
+    generated = target.parent / f"{source.stem}.pdf"
+    if result.returncode != 0 or not generated.exists():
+        message = (result.stderr or result.stdout or "").strip()
+        raise RuntimeError(
+            f"LibreOffice gagal membuat preview PDF. {message}"
+        )
+
+    if generated.resolve() != target.resolve():
+        if target.exists():
+            target.unlink()
+        generated.replace(target)
+
+
+def ensure_preview_pdf(source_path: str | Path) -> Path:
+    source = resolve_storage_path(source_path)
+
+    if not source.exists():
+        raise FileNotFoundError(str(source))
+
+    if source.suffix.lower() == ".pdf":
+        return source
+
+    if source.suffix.lower() != ".docx":
+        raise ValueError(
+            "Preview visual saat ini mendukung DOCX dan PDF."
+        )
+
+    target = _preview_cache_path(source)
+    if target.exists() and target.stat().st_size > 0:
+        return target
+
+    errors: list[str] = []
+
+    if os.name == "nt":
+        try:
+            _convert_docx_with_word(source, target)
+            if target.exists() and target.stat().st_size > 0:
+                return target
+        except Exception as exc:
+            errors.append(f"Microsoft Word: {exc}")
+
+    try:
+        _convert_docx_with_libreoffice(source, target)
+        if target.exists() and target.stat().st_size > 0:
+            return target
+    except Exception as exc:
+        errors.append(f"LibreOffice: {exc}")
+
+    details = "\n".join(errors) or "Tidak ada converter DOCX tersedia."
+    raise RuntimeError(
+        "Preview Word dengan layout asli membutuhkan Microsoft Word "
+        "atau LibreOffice yang terpasang di komputer.\n\n"
+        + details
+    )
+
+
+def render_preview_pages(
+    preview_pdf: str | Path,
+    dpi: int = 120,
+) -> list[dict]:
+    path = Path(preview_pdf)
+    pages: list[dict] = []
+    zoom = dpi / 72.0
+    matrix = pymupdf.Matrix(zoom, zoom)
+
+    with pymupdf.open(path) as document:
+        for page_index, page in enumerate(document):
+            pixmap = page.get_pixmap(
+                matrix=matrix,
+                alpha=False,
+            )
+            pages.append(
+                {
+                    "page_index": page_index,
+                    "page_width": float(page.rect.width),
+                    "page_height": float(page.rect.height),
+                    "image_width": int(pixmap.width),
+                    "image_height": int(pixmap.height),
+                    "png": pixmap.tobytes("png"),
+                }
+            )
+
+    return pages
+
+
+def _pdf_text_blocks(preview_pdf: Path) -> list[dict]:
+    result: list[dict] = []
+
+    with pymupdf.open(preview_pdf) as document:
+        for page_index, page in enumerate(document):
+            for block in page.get_text("blocks"):
+                text_value = _normalize_text(str(block[4]))
+                if not text_value:
+                    continue
+
+                result.append(
+                    {
+                        "page_index": page_index,
+                        "bbox": (
+                            float(block[0]),
+                            float(block[1]),
+                            float(block[2]),
+                            float(block[3]),
+                        ),
+                        "text": text_value,
+                    }
+                )
+
+    return result
+
+
+def _text_similarity(left: str, right: str) -> float:
+    a = _normalize_text(left).casefold()
+    b = _normalize_text(right).casefold()
+
+    if not a or not b:
+        return 0.0
+
+    if a == b:
+        return 1.0
+
+    if len(a) >= 20 and (a in b or b in a):
+        shorter = min(len(a), len(b))
+        longer = max(len(a), len(b))
+        return 0.86 + (0.14 * shorter / longer)
+
+    return SequenceMatcher(None, a, b).ratio()
+
+
+def map_review_paragraphs_to_preview(
+    source_path: str | Path,
+    preview_pdf: str | Path,
+    paragraphs: list[dict] | None = None,
+) -> list[dict]:
+    source = resolve_storage_path(source_path)
+    preview = Path(preview_pdf)
+    rows = paragraphs or extract_review_paragraphs(source)
+    blocks = _pdf_text_blocks(preview)
+
+    if source.suffix.lower() == ".pdf":
+        anchors: list[dict] = []
+        for row, block in zip(rows, blocks):
+            anchors.append(
+                {
+                    "paragraph_index": int(row["paragraph_index"]),
+                    "page_index": int(block["page_index"]),
+                    "bbox": block["bbox"],
+                    "text": row["text"],
+                    "section": row.get("section") or "",
+                }
+            )
+        return anchors
+
+    anchors: list[dict] = []
+    search_start = 0
+
+    for row in rows:
+        text_value = row["text"]
+        if len(text_value) < 2:
+            continue
+
+        best_index: int | None = None
+        best_score = 0.0
+
+        window_end = min(len(blocks), search_start + 35)
+        for index in range(search_start, window_end):
+            score = _text_similarity(text_value, blocks[index]["text"])
+            if score > best_score:
+                best_score = score
+                best_index = index
+
+            if score >= 0.96:
+                break
+
+        if best_index is None or best_score < 0.48:
+            continue
+
+        block = blocks[best_index]
+        anchors.append(
+            {
+                "paragraph_index": int(row["paragraph_index"]),
+                "page_index": int(block["page_index"]),
+                "bbox": block["bbox"],
+                "text": text_value,
+                "section": row.get("section") or "",
+            }
+        )
+
+        search_start = max(search_start, best_index)
+
+    return anchors
