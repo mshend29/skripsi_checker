@@ -156,3 +156,149 @@ def import_proposal(
         version=version,
         kind="proposal",
     )
+
+
+
+def _heading_label(text: str, style_name: str = "") -> bool:
+    normalized = re.sub(r"\s+", " ", text).strip()
+    if not normalized:
+        return False
+
+    if style_name.lower().startswith("heading"):
+        return True
+
+    patterns = [
+        re.compile(r"^BAB\s+[IVXLCDM]+(?:\s*[-.:]?\s*.*)?$", re.IGNORECASE),
+        re.compile(r"^\d+(?:\.\d+){1,3}\s+.+$"),
+    ]
+    if any(pattern.match(normalized) for pattern in patterns):
+        return True
+
+    words = normalized.split()
+    letters = [char for char in normalized if char.isalpha()]
+    return bool(
+        1 < len(words) <= 10
+        and len(normalized) <= 100
+        and letters
+        and normalized.upper() == normalized
+    )
+
+
+def extract_review_paragraphs(file_path: str | Path) -> list[dict]:
+    path = Path(file_path)
+    suffix = path.suffix.lower()
+    result: list[dict] = []
+    current_section = "Awal Dokumen"
+
+    if suffix == ".docx":
+        document = DocxDocument(path)
+        for source_index, paragraph in enumerate(document.paragraphs):
+            text_value = re.sub(r"\s+", " ", paragraph.text).strip()
+            if not text_value:
+                continue
+
+            style_name = paragraph.style.name if paragraph.style else ""
+            is_heading = _heading_label(text_value, style_name)
+
+            if is_heading:
+                current_section = text_value
+
+            result.append(
+                {
+                    "paragraph_index": source_index,
+                    "display_index": len(result) + 1,
+                    "text": text_value,
+                    "section": current_section,
+                    "style_name": style_name,
+                    "is_heading": is_heading,
+                }
+            )
+
+        return result
+
+    if suffix == ".pdf":
+        with pymupdf.open(path) as document:
+            source_index = 0
+            for page_number, page in enumerate(document, start=1):
+                blocks = page.get_text("blocks")
+                for block in blocks:
+                    text_value = re.sub(r"\s+", " ", block[4]).strip()
+                    if not text_value:
+                        continue
+
+                    is_heading = _heading_label(text_value)
+                    if is_heading:
+                        current_section = text_value
+
+                    result.append(
+                        {
+                            "paragraph_index": source_index,
+                            "display_index": len(result) + 1,
+                            "text": text_value,
+                            "section": current_section,
+                            "style_name": f"PDF halaman {page_number}",
+                            "is_heading": is_heading,
+                        }
+                    )
+                    source_index += 1
+
+        return result
+
+    raise ValueError("Format dokumen belum didukung. Gunakan DOCX atau PDF.")
+
+
+def export_docx_with_comments(
+    source_path: str | Path,
+    output_path: str | Path,
+    comments: list[dict],
+    author: str = "Dosen Pembimbing",
+    initials: str = "DP",
+) -> int:
+    source = Path(source_path)
+    target = Path(output_path)
+
+    if source.suffix.lower() != ".docx":
+        raise ValueError(
+            "Komentar Word hanya dapat ditanamkan ke dokumen DOCX."
+        )
+
+    document = DocxDocument(source)
+    exported = 0
+
+    for item in comments:
+        paragraph_index = item.get("paragraph_index")
+        if paragraph_index is None:
+            continue
+
+        if not 0 <= int(paragraph_index) < len(document.paragraphs):
+            continue
+
+        paragraph = document.paragraphs[int(paragraph_index)]
+        runs = list(paragraph.runs)
+
+        if not runs:
+            runs = [paragraph.add_run("")]
+
+        category = item.get("category") or "Umum"
+        severity = item.get("severity") or "Moderate"
+        selected_text = (item.get("selected_text") or "").strip()
+        comment_text = (item.get("content") or "").strip()
+
+        parts = [
+            f"[{severity}] [{category}]",
+        ]
+        if selected_text and selected_text != paragraph.text.strip():
+            parts.append(f'Kutipan: "{selected_text}"')
+        parts.append(comment_text)
+
+        document.add_comment(
+            runs=runs,
+            text="\n".join(parts),
+            author=author,
+            initials=initials,
+        )
+        exported += 1
+
+    target.parent.mkdir(parents=True, exist_ok=True)
+    document.save(target)
+    return exported
