@@ -124,3 +124,16 @@ Pada halaman preview, aplikasi memasang overlay komentar di atas paragraf teks y
 dipetakan. Overlay tidak terlihat dalam kondisi normal; saat hover, area paragraf diberi border
 dan tombol komentar muncul. Preview PDF disimpan sebagai cache lokal di `storage/previews/`
 dan tidak masuk Git.
+
+
+## Interaksi koreksi dokumen
+
+Area hover paragraf dipetakan dari beberapa blok hasil render sehingga mengikuti paragraf secara
+lebih utuh. Teks pada preview dapat dipilih dengan drag mouse menggunakan koordinat kata dari PDF
+hasil render Word. Jika tidak ada teks yang dipilih, tombol komentar menggunakan seluruh paragraf
+sebagai kutipan. Jika ada teks yang dipilih, hanya teks tersebut yang menjadi kutipan komentar.
+
+Dialog Tambah/Edit Komentar diperbesar dan menggunakan input putih dengan teks hitam serta font
+yang lebih besar. Layout awal modul Koreksi menggunakan rasio Struktur/Dokumen/Komentar 20/70/10
+dan tetap dapat diubah dengan menarik splitter. Panel Dokumen memiliki zoom 50%–200% dengan tombol
+minus, slider, dan plus.
