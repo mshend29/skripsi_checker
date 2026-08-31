@@ -2,23 +2,23 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from PySide6.QtCore import Qt, QUrl
-from PySide6.QtGui import QDesktopServices, QTextCursor
+from PySide6.QtCore import Qt, QUrl, Signal
+from PySide6.QtGui import QDesktopServices
 from PySide6.QtWidgets import (
-    QAbstractItemView,
     QComboBox,
     QDialog,
     QDialogButtonBox,
+    QFileDialog,
+    QFrame,
     QFormLayout,
     QHBoxLayout,
-    QHeaderView,
     QLabel,
+    QListWidget,
+    QListWidgetItem,
     QMessageBox,
     QPushButton,
-    QPlainTextEdit,
+    QScrollArea,
     QSplitter,
-    QTableWidget,
-    QTableWidgetItem,
     QTextEdit,
     QVBoxLayout,
     QWidget,
@@ -29,8 +29,8 @@ from sqlalchemy.orm import selectinload
 from app.database import SessionLocal
 from app.models import ReviewComment, Thesis, ThesisDocument
 from app.services.document_service import (
-    extract_sections,
-    extract_text,
+    export_docx_with_comments,
+    extract_review_paragraphs,
     resolve_storage_path,
 )
 
@@ -41,57 +41,179 @@ DOCUMENT_KIND_LABELS = {
     "final": "Final",
 }
 
-COMMENT_STATUS_LABELS = {
-    "Open": "Terbuka",
+CATEGORY_OPTIONS = [
+    "Substansi",
+    "Metodologi",
+    "Bahasa",
+    "Format",
+    "Sitasi",
+    "Referensi",
+    "Data",
+    "Umum",
+]
+
+SEVERITY_OPTIONS = [
+    "Minor",
+    "Moderate",
+    "Major",
+    "Critical",
+]
+
+STATUS_LABELS = {
+    "Open": "Belum Diperbaiki",
     "Resolved": "Selesai",
 }
+
+
+class ParagraphCard(QFrame):
+    comment_requested = Signal(int, str)
+
+    def __init__(
+        self,
+        paragraph: dict,
+        comment_count: int = 0,
+        parent=None,
+    ):
+        super().__init__(parent)
+
+        self.paragraph = paragraph
+        self.setObjectName("paragraphCard")
+        self.setFrameShape(QFrame.StyledPanel)
+
+        self.setStyleSheet(
+            "QFrame#paragraphCard {"
+            " background: white;"
+            " border: 1px solid #dedede;"
+            " border-radius: 8px;"
+            "}"
+            "QFrame#paragraphCard:hover { border-color: #999; }"
+        )
+
+        layout = QHBoxLayout(self)
+        layout.setContentsMargins(12, 10, 10, 10)
+        layout.setSpacing(10)
+
+        number = QLabel(str(paragraph["display_index"]))
+        number.setFixedWidth(28)
+        number.setAlignment(Qt.AlignTop | Qt.AlignHCenter)
+        number.setStyleSheet(
+            "color: #888; font-size: 11px; padding-top: 4px; border: none;"
+        )
+        layout.addWidget(number)
+
+        self.text_view = QTextEdit()
+        self.text_view.setReadOnly(True)
+        self.text_view.setFrameShape(QFrame.NoFrame)
+        self.text_view.setVerticalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
+        self.text_view.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
+        self.text_view.setPlainText(paragraph["text"])
+
+        font = self.text_view.font()
+        if paragraph["is_heading"]:
+            font.setBold(True)
+            font.setPointSize(max(font.pointSize(), 11))
+        self.text_view.setFont(font)
+
+        line_count = max(1, paragraph["text"].count("\n") + 1)
+        estimated_lines = max(
+            line_count,
+            (len(paragraph["text"]) // 95) + 1,
+        )
+        self.text_view.setFixedHeight(min(220, 34 + estimated_lines * 22))
+        layout.addWidget(self.text_view, 1)
+
+        actions = QVBoxLayout()
+        actions.setSpacing(6)
+
+        if comment_count:
+            badge = QLabel(f"{comment_count} catatan")
+            badge.setAlignment(Qt.AlignCenter)
+            badge.setStyleSheet(
+                "background: #f3f3f3; border-radius: 9px; "
+                "padding: 3px 7px; color: #555; font-size: 10px;"
+            )
+            actions.addWidget(badge)
+
+        comment_button = QPushButton("Komentar")
+        comment_button.setCursor(Qt.PointingHandCursor)
+        comment_button.clicked.connect(self.request_comment)
+        actions.addWidget(comment_button)
+        actions.addStretch()
+
+        layout.addLayout(actions)
+
+    def request_comment(self) -> None:
+        selected_text = self.text_view.textCursor().selectedText().strip()
+        if not selected_text:
+            selected_text = self.paragraph["text"]
+
+        self.comment_requested.emit(
+            int(self.paragraph["paragraph_index"]),
+            selected_text,
+        )
 
 
 class CommentDialog(QDialog):
     def __init__(
         self,
-        sections: list[str],
-        comment: ReviewComment | None = None,
-        selected_section: str | None = None,
+        paragraph_text: str,
+        selected_text: str,
+        section: str,
+        comment_data: dict | None = None,
         parent=None,
     ):
         super().__init__(parent)
 
-        self.setWindowTitle("Edit Komentar" if comment else "Tambah Komentar")
-        self.resize(560, 360)
+        self.setWindowTitle(
+            "Edit Komentar" if comment_data else "Tambah Komentar"
+        )
+        self.resize(600, 500)
 
         layout = QVBoxLayout(self)
         layout.setSpacing(12)
 
+        location = QLabel(
+            f"<b>Bagian:</b> {section or 'Awal Dokumen'}"
+        )
+        location.setWordWrap(True)
+        layout.addWidget(location)
+
+        quote = QLabel(
+            f'“{selected_text[:500]}{"…" if len(selected_text) > 500 else ""}”'
+        )
+        quote.setWordWrap(True)
+        quote.setTextInteractionFlags(Qt.TextSelectableByMouse)
+        quote.setStyleSheet(
+            "background: #f5f5f5; border-left: 3px solid #999; "
+            "padding: 10px; color: #555;"
+        )
+        layout.addWidget(quote)
+
         form = QFormLayout()
 
-        self.section = QComboBox()
-        self.section.setEditable(True)
-        self.section.addItem("Umum")
-        self.section.addItems(sections)
+        self.category = QComboBox()
+        self.category.addItems(CATEGORY_OPTIONS)
 
-        initial_section = (
-            comment.section
-            if comment and comment.section
-            else selected_section or "Umum"
-        )
-        index = self.section.findText(initial_section)
-        if index >= 0:
-            self.section.setCurrentIndex(index)
-        else:
-            self.section.setCurrentText(initial_section)
+        self.severity = QComboBox()
+        self.severity.addItems(SEVERITY_OPTIONS)
+        self.severity.setCurrentText("Moderate")
 
-        form.addRow("Bagian", self.section)
+        form.addRow("Kategori", self.category)
+        form.addRow("Tingkat", self.severity)
         layout.addLayout(form)
 
-        self.content = QPlainTextEdit()
+        self.content = QTextEdit()
         self.content.setPlaceholderText(
-            "Tuliskan catatan, koreksi, atau arahan revisi untuk mahasiswa..."
+            "Tuliskan koreksi atau arahan revisi untuk mahasiswa..."
         )
-        if comment:
-            self.content.setPlainText(comment.content)
-
         layout.addWidget(self.content, 1)
+
+        if comment_data:
+            if comment_data.get("category"):
+                self.category.setCurrentText(comment_data["category"])
+            if comment_data.get("severity"):
+                self.severity.setCurrentText(comment_data["severity"])
+            self.content.setPlainText(comment_data.get("content") or "")
 
         buttons = QDialogButtonBox(
             QDialogButtonBox.Save | QDialogButtonBox.Cancel
@@ -108,15 +230,123 @@ class CommentDialog(QDialog):
                 "Isi komentar terlebih dahulu.",
             )
             return
-
         self.accept()
 
     def payload(self) -> dict:
-        section = self.section.currentText().strip() or "Umum"
         return {
-            "section": section,
+            "category": self.category.currentText(),
+            "severity": self.severity.currentText(),
             "content": self.content.toPlainText().strip(),
         }
+
+
+class CommentCard(QFrame):
+    goto_requested = Signal(int)
+    edit_requested = Signal(int)
+    toggle_requested = Signal(int)
+    delete_requested = Signal(int)
+
+    def __init__(self, comment: dict, parent=None):
+        super().__init__(parent)
+
+        self.comment_id = int(comment["id"])
+
+        self.setFrameShape(QFrame.StyledPanel)
+        self.setStyleSheet(
+            "QFrame { background: white; border: 1px solid #dedede; "
+            "border-radius: 8px; }"
+            "QLabel { border: none; }"
+            "QPushButton { border: 1px solid #d5d5d5; "
+            "border-radius: 5px; padding: 5px 8px; }"
+        )
+
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(12, 12, 12, 12)
+        layout.setSpacing(8)
+
+        badges = QHBoxLayout()
+        severity = QLabel(comment.get("severity") or "Moderate")
+        severity.setStyleSheet(
+            "background: #efefef; border-radius: 8px; "
+            "padding: 2px 7px; font-size: 10px;"
+        )
+        category = QLabel(comment.get("category") or "Umum")
+        category.setStyleSheet(
+            "background: #f5f5f5; border-radius: 8px; "
+            "padding: 2px 7px; font-size: 10px;"
+        )
+        status = QLabel(
+            STATUS_LABELS.get(comment.get("status"), comment.get("status"))
+        )
+        status.setStyleSheet(
+            "background: #f5f5f5; border-radius: 8px; "
+            "padding: 2px 7px; font-size: 10px;"
+        )
+
+        badges.addWidget(severity)
+        badges.addWidget(category)
+        badges.addWidget(status)
+        badges.addStretch()
+        layout.addLayout(badges)
+
+        section = QLabel(comment.get("section") or "Awal Dokumen")
+        section.setStyleSheet("font-weight: 600; color: #555;")
+        section.setWordWrap(True)
+        layout.addWidget(section)
+
+        selected = (comment.get("selected_text") or "").strip()
+        if selected:
+            quote = QLabel(
+                f'“{selected[:220]}{"…" if len(selected) > 220 else ""}”'
+            )
+            quote.setWordWrap(True)
+            quote.setStyleSheet(
+                "background: #fafafa; padding: 7px; color: #666; "
+                "font-style: italic;"
+            )
+            layout.addWidget(quote)
+
+        body = QLabel(comment.get("content") or "")
+        body.setWordWrap(True)
+        body.setTextInteractionFlags(Qt.TextSelectableByMouse)
+        layout.addWidget(body)
+
+        timestamp = QLabel(comment.get("created_at") or "")
+        timestamp.setStyleSheet("color: #999; font-size: 10px;")
+        layout.addWidget(timestamp)
+
+        actions = QHBoxLayout()
+
+        goto_button = QPushButton("Ke paragraf")
+        goto_button.clicked.connect(
+            lambda: self.goto_requested.emit(self.comment_id)
+        )
+        actions.addWidget(goto_button)
+
+        edit_button = QPushButton("Edit")
+        edit_button.clicked.connect(
+            lambda: self.edit_requested.emit(self.comment_id)
+        )
+        actions.addWidget(edit_button)
+
+        toggle_text = (
+            "Buka Lagi"
+            if comment.get("status") == "Resolved"
+            else "Selesai"
+        )
+        toggle_button = QPushButton(toggle_text)
+        toggle_button.clicked.connect(
+            lambda: self.toggle_requested.emit(self.comment_id)
+        )
+        actions.addWidget(toggle_button)
+
+        delete_button = QPushButton("Hapus")
+        delete_button.clicked.connect(
+            lambda: self.delete_requested.emit(self.comment_id)
+        )
+        actions.addWidget(delete_button)
+
+        layout.addLayout(actions)
 
 
 class ReviewPage(QWidget):
@@ -124,155 +354,159 @@ class ReviewPage(QWidget):
         super().__init__()
 
         self.current_document_id: int | None = None
-        self.current_sections: list[str] = []
         self.current_file_path: Path | None = None
+        self.current_paragraphs: list[dict] = []
+        self.paragraph_widgets: dict[int, ParagraphCard] = {}
         self._loading = False
 
-        layout = QVBoxLayout(self)
-        layout.setContentsMargins(24, 24, 24, 24)
-        layout.setSpacing(14)
+        root = QVBoxLayout(self)
+        root.setContentsMargins(24, 24, 24, 24)
+        root.setSpacing(14)
 
-        title = QLabel("Koreksi Skripsi")
+        header = QHBoxLayout()
+        title_box = QVBoxLayout()
+
+        title = QLabel("Review Dokumen")
         title.setStyleSheet("font-size: 26px; font-weight: 700;")
-        layout.addWidget(title)
-
         subtitle = QLabel(
-            "Catatan koreksi tersimpan pada versi dokumen yang sedang dibuka, "
-            "sehingga riwayat komentar antar-versi tetap terpisah."
+            "Pilih paragraf atau blok teks, lalu berikan catatan koreksi."
         )
-        subtitle.setWordWrap(True)
         subtitle.setStyleSheet("color: #666;")
-        layout.addWidget(subtitle)
 
-        selectors = QHBoxLayout()
-        selectors.setSpacing(8)
+        title_box.addWidget(title)
+        title_box.addWidget(subtitle)
+        header.addLayout(title_box)
+        header.addStretch()
 
-        selectors.addWidget(QLabel("Skripsi"))
+        self.export_button = QPushButton("Export Word Berkomentar")
+        self.export_button.clicked.connect(self.export_word_comments)
+        header.addWidget(self.export_button)
+
+        root.addLayout(header)
+
+        toolbar = QHBoxLayout()
+        toolbar.setSpacing(8)
+
+        toolbar.addWidget(QLabel("Skripsi"))
         self.thesis_combo = QComboBox()
-        self.thesis_combo.setMinimumWidth(320)
+        self.thesis_combo.setMinimumWidth(300)
         self.thesis_combo.currentIndexChanged.connect(self.load_documents)
-        selectors.addWidget(self.thesis_combo, 2)
+        toolbar.addWidget(self.thesis_combo, 2)
 
-        selectors.addWidget(QLabel("Versi"))
+        toolbar.addWidget(QLabel("Dokumen"))
         self.document_combo = QComboBox()
         self.document_combo.setMinimumWidth(220)
         self.document_combo.currentIndexChanged.connect(self.load_document)
-        selectors.addWidget(self.document_combo, 1)
+        toolbar.addWidget(self.document_combo, 1)
 
-        self.open_file_button = QPushButton("Buka File Asli")
-        self.open_file_button.clicked.connect(self.open_original_file)
-        selectors.addWidget(self.open_file_button)
+        self.open_button = QPushButton("Buka File Asli")
+        self.open_button.clicked.connect(self.open_original_file)
+        toolbar.addWidget(self.open_button)
 
-        layout.addLayout(selectors)
+        root.addLayout(toolbar)
+
+        self.version_info = QLabel("Pilih skripsi untuk mulai review.")
+        self.version_info.setStyleSheet("color: #777; font-size: 12px;")
+        self.version_info.setWordWrap(True)
+        root.addWidget(self.version_info)
 
         splitter = QSplitter(Qt.Horizontal)
-        layout.addWidget(splitter, 1)
+        root.addWidget(splitter, 1)
 
-        document_panel = QWidget()
-        document_layout = QVBoxLayout(document_panel)
-        document_layout.setContentsMargins(0, 0, 8, 0)
-        document_layout.setSpacing(8)
+        splitter.addWidget(self.build_structure_panel())
+        splitter.addWidget(self.build_document_panel())
+        splitter.addWidget(self.build_comments_panel())
+        splitter.setSizes([230, 700, 360])
 
-        navigation = QHBoxLayout()
-        navigation.addWidget(QLabel("Bagian"))
+        self.update_actions()
 
-        self.section_combo = QComboBox()
-        self.section_combo.currentTextChanged.connect(self.jump_to_section)
-        navigation.addWidget(self.section_combo, 1)
+    def build_structure_panel(self) -> QWidget:
+        panel = QFrame()
+        panel.setFrameShape(QFrame.StyledPanel)
 
-        document_layout.addLayout(navigation)
+        layout = QVBoxLayout(panel)
+        layout.setContentsMargins(12, 12, 12, 12)
 
-        self.document_info = QLabel("Belum ada dokumen dipilih.")
-        self.document_info.setWordWrap(True)
-        self.document_info.setStyleSheet("color: #777; font-size: 12px;")
-        document_layout.addWidget(self.document_info)
+        heading = QHBoxLayout()
+        title = QLabel("STRUKTUR")
+        title.setStyleSheet("font-weight: 700;")
+        heading.addWidget(title)
+        heading.addStretch()
 
-        self.document_view = QTextEdit()
-        self.document_view.setReadOnly(True)
-        self.document_view.setPlaceholderText(
-            "Isi dokumen DOCX/PDF akan ditampilkan di sini."
+        self.section_count = QLabel("0")
+        self.section_count.setStyleSheet(
+            "background: #f1f1f1; border-radius: 8px; padding: 2px 7px;"
         )
-        document_layout.addWidget(self.document_view, 1)
+        heading.addWidget(self.section_count)
+        layout.addLayout(heading)
 
-        splitter.addWidget(document_panel)
+        self.structure_list = QListWidget()
+        self.structure_list.itemClicked.connect(self.goto_structure_item)
+        layout.addWidget(self.structure_list, 1)
 
-        comments_panel = QWidget()
-        comments_layout = QVBoxLayout(comments_panel)
-        comments_layout.setContentsMargins(8, 0, 0, 0)
-        comments_layout.setSpacing(8)
+        return panel
 
-        comments_header = QHBoxLayout()
+    def build_document_panel(self) -> QWidget:
+        panel = QFrame()
+        panel.setFrameShape(QFrame.StyledPanel)
 
-        comments_title = QLabel("Catatan Dosen")
-        comments_title.setStyleSheet("font-size: 16px; font-weight: 700;")
-        comments_header.addWidget(comments_title)
-        comments_header.addStretch()
+        layout = QVBoxLayout(panel)
+        layout.setContentsMargins(0, 0, 0, 0)
+
+        self.document_scroll = QScrollArea()
+        self.document_scroll.setWidgetResizable(True)
+        self.document_scroll.setFrameShape(QFrame.NoFrame)
+
+        self.document_container = QWidget()
+        self.document_layout = QVBoxLayout(self.document_container)
+        self.document_layout.setContentsMargins(14, 14, 14, 14)
+        self.document_layout.setSpacing(8)
+        self.document_layout.addStretch()
+
+        self.document_scroll.setWidget(self.document_container)
+        layout.addWidget(self.document_scroll)
+
+        return panel
+
+    def build_comments_panel(self) -> QWidget:
+        panel = QFrame()
+        panel.setFrameShape(QFrame.StyledPanel)
+
+        layout = QVBoxLayout(panel)
+        layout.setContentsMargins(12, 12, 12, 12)
+        layout.setSpacing(8)
+
+        header = QHBoxLayout()
+        title = QLabel("CATATAN REVIEW")
+        title.setStyleSheet("font-weight: 700;")
+        header.addWidget(title)
+        header.addStretch()
 
         self.comment_filter = QComboBox()
-        self.comment_filter.addItems(["Semua", "Terbuka", "Selesai"])
+        self.comment_filter.addItems(["Aktif", "Semua", "Selesai"])
         self.comment_filter.currentTextChanged.connect(self.load_comments)
-        comments_header.addWidget(self.comment_filter)
+        header.addWidget(self.comment_filter)
 
-        comments_layout.addLayout(comments_header)
+        layout.addLayout(header)
 
-        self.comments_table = QTableWidget(0, 4)
-        self.comments_table.setHorizontalHeaderLabels(
-            ["Bagian", "Komentar", "Status", "Tanggal"]
-        )
-        self.comments_table.setSelectionBehavior(QAbstractItemView.SelectRows)
-        self.comments_table.setSelectionMode(QAbstractItemView.SingleSelection)
-        self.comments_table.setEditTriggers(QAbstractItemView.NoEditTriggers)
-        self.comments_table.setAlternatingRowColors(True)
-        self.comments_table.verticalHeader().setVisible(False)
-        self.comments_table.horizontalHeader().setSectionResizeMode(
-            QHeaderView.Stretch
-        )
-        self.comments_table.horizontalHeader().setSectionResizeMode(
-            0, QHeaderView.ResizeToContents
-        )
-        self.comments_table.horizontalHeader().setSectionResizeMode(
-            2, QHeaderView.ResizeToContents
-        )
-        self.comments_table.horizontalHeader().setSectionResizeMode(
-            3, QHeaderView.ResizeToContents
-        )
-        self.comments_table.itemDoubleClicked.connect(
-            lambda _: self.edit_selected_comment()
-        )
-        self.comments_table.itemSelectionChanged.connect(
-            self.update_comment_actions
-        )
-        comments_layout.addWidget(self.comments_table, 1)
+        self.comment_count = QLabel("0 komentar")
+        self.comment_count.setStyleSheet("color: #777; font-size: 11px;")
+        layout.addWidget(self.comment_count)
 
-        self.comment_count_label = QLabel("0 komentar")
-        self.comment_count_label.setStyleSheet("color: #777; font-size: 12px;")
-        comments_layout.addWidget(self.comment_count_label)
+        self.comments_scroll = QScrollArea()
+        self.comments_scroll.setWidgetResizable(True)
+        self.comments_scroll.setFrameShape(QFrame.NoFrame)
 
-        actions = QHBoxLayout()
+        self.comments_container = QWidget()
+        self.comments_layout = QVBoxLayout(self.comments_container)
+        self.comments_layout.setContentsMargins(0, 0, 0, 0)
+        self.comments_layout.setSpacing(8)
+        self.comments_layout.addStretch()
 
-        self.add_comment_button = QPushButton("+ Tambah Komentar")
-        self.add_comment_button.clicked.connect(self.add_comment)
-        actions.addWidget(self.add_comment_button)
+        self.comments_scroll.setWidget(self.comments_container)
+        layout.addWidget(self.comments_scroll, 1)
 
-        self.edit_comment_button = QPushButton("Edit")
-        self.edit_comment_button.clicked.connect(self.edit_selected_comment)
-        actions.addWidget(self.edit_comment_button)
-
-        self.toggle_status_button = QPushButton("Tandai Selesai")
-        self.toggle_status_button.clicked.connect(self.toggle_selected_status)
-        actions.addWidget(self.toggle_status_button)
-
-        self.delete_comment_button = QPushButton("Hapus")
-        self.delete_comment_button.clicked.connect(self.delete_selected_comment)
-        actions.addWidget(self.delete_comment_button)
-
-        comments_layout.addLayout(actions)
-
-        splitter.addWidget(comments_panel)
-        splitter.setSizes([700, 500])
-
-        self.update_document_actions()
-        self.update_comment_actions()
+        return panel
 
     def refresh(self) -> None:
         selected_thesis_id = self.thesis_combo.currentData()
@@ -284,19 +518,18 @@ class ReviewPage(QWidget):
                     selectinload(Thesis.student),
                     selectinload(Thesis.documents),
                 )
-                .order_by(Thesis.student_id.asc())
+                .order_by(Thesis.id.desc())
             ).all()
 
         self._loading = True
         self.thesis_combo.clear()
 
         for thesis in theses:
-            document_count = len(thesis.documents)
-            label = (
-                f"{thesis.student.nim} - {thesis.student.name}"
-                f"  ({document_count} dokumen)"
+            self.thesis_combo.addItem(
+                f"{thesis.student.name} — "
+                f"{thesis.title or '(judul belum tersedia)'}",
+                thesis.id,
             )
-            self.thesis_combo.addItem(label, thesis.id)
 
         if selected_thesis_id is not None:
             index = self.thesis_combo.findData(selected_thesis_id)
@@ -322,7 +555,6 @@ class ReviewPage(QWidget):
                     .options(selectinload(Thesis.documents))
                     .where(Thesis.id == thesis_id)
                 )
-
                 documents = (
                     sorted(
                         thesis.documents,
@@ -338,8 +570,10 @@ class ReviewPage(QWidget):
                     document.kind,
                     document.kind.title(),
                 )
-                label = f"V{document.version} - {kind}"
-                self.document_combo.addItem(label, document.id)
+                self.document_combo.addItem(
+                    f"V{document.version} — {kind}",
+                    document.id,
+                )
 
         self._loading = False
         self.load_document()
@@ -348,22 +582,20 @@ class ReviewPage(QWidget):
         if self._loading:
             return
 
-        document_id = self.document_combo.currentData()
-        self.current_document_id = document_id
-        self.current_sections = []
+        self.current_document_id = self.document_combo.currentData()
         self.current_file_path = None
+        self.current_paragraphs = []
+        self.paragraph_widgets = {}
 
-        self.document_view.clear()
-        self.section_combo.blockSignals(True)
-        self.section_combo.clear()
-        self.section_combo.blockSignals(False)
+        self.clear_layout(self.document_layout)
+        self.clear_structure()
 
-        if document_id is None:
-            self.document_info.setText(
-                "Skripsi ini belum mempunyai dokumen yang dapat dikoreksi."
+        if self.current_document_id is None:
+            self.version_info.setText(
+                "Skripsi ini belum mempunyai dokumen untuk direview."
             )
             self.load_comments()
-            self.update_document_actions()
+            self.update_actions()
             return
 
         try:
@@ -375,156 +607,127 @@ class ReviewPage(QWidget):
                             Thesis.student
                         )
                     )
-                    .where(ThesisDocument.id == document_id)
+                    .where(ThesisDocument.id == self.current_document_id)
                 )
 
                 if document is None:
-                    raise ValueError("Versi dokumen tidak ditemukan.")
+                    raise ValueError("Dokumen tidak ditemukan.")
 
                 file_path = resolve_storage_path(document.file_path)
                 if not file_path.exists():
                     raise FileNotFoundError(str(file_path))
 
-                text = extract_text(file_path)
-                sections = extract_sections(text)
+                document_meta = {
+                    "version": document.version,
+                    "kind": document.kind,
+                    "uploaded_at": document.uploaded_at,
+                    "student": document.thesis.student.name,
+                }
 
-                student_name = document.thesis.student.name
-                kind = DOCUMENT_KIND_LABELS.get(
-                    document.kind,
-                    document.kind.title(),
-                )
-                uploaded_at = document.uploaded_at.strftime("%d-%m-%Y %H:%M")
-
+            paragraphs = extract_review_paragraphs(file_path)
             self.current_file_path = file_path
-            self.current_sections = sections
+            self.current_paragraphs = paragraphs
 
-            self.document_view.setPlainText(text)
-            self.document_info.setText(
-                f"{student_name}  •  V{document.version} {kind}  •  "
-                f"Import: {uploaded_at}  •  {file_path.name}"
+            comment_counts = self.comment_counts_by_paragraph()
+
+            sections: dict[str, int] = {}
+            for paragraph in paragraphs:
+                section = paragraph.get("section") or "Awal Dokumen"
+                sections.setdefault(
+                    section,
+                    int(paragraph["paragraph_index"]),
+                )
+
+                card = ParagraphCard(
+                    paragraph,
+                    comment_count=comment_counts.get(
+                        int(paragraph["paragraph_index"]),
+                        0,
+                    ),
+                )
+                card.comment_requested.connect(self.add_comment_for_paragraph)
+                self.document_layout.insertWidget(
+                    self.document_layout.count() - 1,
+                    card,
+                )
+                self.paragraph_widgets[
+                    int(paragraph["paragraph_index"])
+                ] = card
+
+            for section, paragraph_index in sections.items():
+                item = QListWidgetItem(section)
+                item.setData(Qt.UserRole, paragraph_index)
+                self.structure_list.addItem(item)
+
+            self.section_count.setText(str(len(sections)))
+
+            kind = DOCUMENT_KIND_LABELS.get(
+                document_meta["kind"],
+                document_meta["kind"].title(),
+            )
+            self.version_info.setText(
+                f'{document_meta["student"]}  •  '
+                f'V{document_meta["version"]} {kind}  •  '
+                f'{document_meta["uploaded_at"].strftime("%d-%m-%Y %H:%M")}  •  '
+                f'{file_path.name}'
             )
 
-            self.section_combo.blockSignals(True)
-            self.section_combo.addItem("Awal Dokumen")
-            self.section_combo.addItems(sections)
-            self.section_combo.blockSignals(False)
-
-        except FileNotFoundError as exc:
-            self.document_info.setText(
-                f"File tidak ditemukan di storage lokal: {exc}"
-            )
         except Exception as exc:
-            self.document_info.setText(
-                f"Dokumen tidak dapat dibaca: {exc}"
-            )
+            self.version_info.setText(f"Dokumen tidak dapat dibaca: {exc}")
 
         self.load_comments()
-        self.update_document_actions()
+        self.update_actions()
 
-    def jump_to_section(self, section: str) -> None:
-        if not section or section == "Awal Dokumen":
-            cursor = self.document_view.textCursor()
-            cursor.movePosition(QTextCursor.Start)
-            self.document_view.setTextCursor(cursor)
-            self.document_view.ensureCursorVisible()
+    def clear_layout(self, layout: QVBoxLayout) -> None:
+        while layout.count() > 1:
+            item = layout.takeAt(0)
+            widget = item.widget()
+            if widget is not None:
+                widget.deleteLater()
+
+    def clear_structure(self) -> None:
+        self.structure_list.clear()
+        self.section_count.setText("0")
+
+    def goto_structure_item(self, item: QListWidgetItem) -> None:
+        paragraph_index = item.data(Qt.UserRole)
+        if paragraph_index is not None:
+            self.scroll_to_paragraph(int(paragraph_index))
+
+    def scroll_to_paragraph(self, paragraph_index: int) -> None:
+        widget = self.paragraph_widgets.get(paragraph_index)
+        if widget is None:
             return
 
-        document = self.document_view.document()
-        cursor = document.find(section)
+        self.document_scroll.ensureWidgetVisible(widget, 10, 30)
 
-        if not cursor.isNull():
-            self.document_view.setTextCursor(cursor)
-            self.document_view.ensureCursorVisible()
-
-    def open_original_file(self) -> None:
-        if not self.current_file_path or not self.current_file_path.exists():
-            QMessageBox.warning(
-                self,
-                "File tidak ditemukan",
-                "File asli tidak tersedia di storage lokal.",
-            )
-            return
-
-        opened = QDesktopServices.openUrl(
-            QUrl.fromLocalFile(str(self.current_file_path.resolve()))
-        )
-        if not opened:
-            QMessageBox.warning(
-                self,
-                "File tidak dapat dibuka",
-                "Windows tidak menemukan aplikasi untuk membuka file tersebut.",
-            )
-
-    def load_comments(self, *_args) -> None:
-        self.comments_table.setRowCount(0)
-
-        if self.current_document_id is None:
-            self.comment_count_label.setText("0 komentar")
-            self.update_comment_actions()
-            return
-
-        query = (
-            select(ReviewComment)
-            .where(ReviewComment.document_id == self.current_document_id)
-            .order_by(ReviewComment.created_at.desc())
+        widget.setStyleSheet(
+            "QFrame#paragraphCard { background: #fffbe8; "
+            "border: 2px solid #999; border-radius: 8px; }"
         )
 
-        filter_text = self.comment_filter.currentText()
-        if filter_text == "Terbuka":
-            query = query.where(ReviewComment.status == "Open")
-        elif filter_text == "Selesai":
-            query = query.where(ReviewComment.status == "Resolved")
+    def paragraph_data(self, paragraph_index: int) -> dict | None:
+        for paragraph in self.current_paragraphs:
+            if int(paragraph["paragraph_index"]) == paragraph_index:
+                return paragraph
+        return None
 
-        with SessionLocal() as session:
-            comments = session.scalars(query).all()
-
-        self.comments_table.setRowCount(len(comments))
-
-        for row, comment in enumerate(comments):
-            values = [
-                comment.section or "Umum",
-                comment.content,
-                COMMENT_STATUS_LABELS.get(
-                    comment.status,
-                    comment.status,
-                ),
-                comment.created_at.strftime("%d-%m-%Y %H:%M"),
-            ]
-
-            for column, value in enumerate(values):
-                item = QTableWidgetItem(str(value))
-                if column == 0:
-                    item.setData(Qt.UserRole, comment.id)
-                self.comments_table.setItem(row, column, item)
-
-        self.comment_count_label.setText(f"{len(comments)} komentar")
-        self.update_comment_actions()
-
-    def selected_comment_id(self) -> int | None:
-        selected = self.comments_table.selectionModel().selectedRows()
-        if not selected:
-            return None
-
-        item = self.comments_table.item(selected[0].row(), 0)
-        if item is None:
-            return None
-
-        value = item.data(Qt.UserRole)
-        return int(value) if value is not None else None
-
-    def selected_section(self) -> str:
-        text = self.section_combo.currentText().strip()
-        if not text or text == "Awal Dokumen":
-            return "Umum"
-        return text
-
-    def add_comment(self) -> None:
+    def add_comment_for_paragraph(
+        self,
+        paragraph_index: int,
+        selected_text: str,
+    ) -> None:
         if self.current_document_id is None:
+            return
+
+        paragraph = self.paragraph_data(paragraph_index)
+        if paragraph is None:
             return
 
         dialog = CommentDialog(
-            sections=self.current_sections,
-            selected_section=self.selected_section(),
+            paragraph_text=paragraph["text"],
+            selected_text=selected_text,
+            section=paragraph.get("section") or "Awal Dokumen",
             parent=self,
         )
         if dialog.exec() != QDialog.Accepted:
@@ -536,32 +739,151 @@ class ReviewPage(QWidget):
             session.add(
                 ReviewComment(
                     document_id=self.current_document_id,
-                    section=payload["section"],
+                    section=paragraph.get("section") or "Awal Dokumen",
+                    paragraph_index=paragraph_index,
+                    selected_text=selected_text,
+                    category=payload["category"],
+                    severity=payload["severity"],
                     content=payload["content"],
                     status="Open",
                 )
             )
             session.commit()
 
-        self.load_comments()
+        self.load_document()
 
-    def edit_selected_comment(self) -> None:
-        comment_id = self.selected_comment_id()
-        if comment_id is None:
+    def comment_counts_by_paragraph(self) -> dict[int, int]:
+        if self.current_document_id is None:
+            return {}
+
+        with SessionLocal() as session:
+            comments = session.scalars(
+                select(ReviewComment).where(
+                    ReviewComment.document_id == self.current_document_id,
+                    ReviewComment.status != "Resolved",
+                )
+            ).all()
+
+        result: dict[int, int] = {}
+        for comment in comments:
+            if comment.paragraph_index is None:
+                continue
+            index = int(comment.paragraph_index)
+            result[index] = result.get(index, 0) + 1
+
+        return result
+
+    def load_comments(self, *_args) -> None:
+        self.clear_layout(self.comments_layout)
+
+        if self.current_document_id is None:
+            self.comment_count.setText("0 komentar")
+            self.update_actions()
             return
 
+        query = (
+            select(ReviewComment)
+            .where(ReviewComment.document_id == self.current_document_id)
+            .order_by(ReviewComment.created_at.desc())
+        )
+
+        filter_text = self.comment_filter.currentText()
+        if filter_text == "Aktif":
+            query = query.where(ReviewComment.status != "Resolved")
+        elif filter_text == "Selesai":
+            query = query.where(ReviewComment.status == "Resolved")
+
+        with SessionLocal() as session:
+            comments = session.scalars(query).all()
+            rows = [
+                {
+                    "id": comment.id,
+                    "section": comment.section,
+                    "paragraph_index": comment.paragraph_index,
+                    "selected_text": comment.selected_text,
+                    "category": comment.category,
+                    "severity": comment.severity,
+                    "content": comment.content,
+                    "status": comment.status,
+                    "created_at": comment.created_at.strftime(
+                        "%d-%m-%Y %H:%M"
+                    ),
+                }
+                for comment in comments
+            ]
+
+        active_count = sum(
+            1 for row in rows if row["status"] != "Resolved"
+        )
+        self.comment_count.setText(
+            f"{active_count} aktif • {len(rows)} tampil"
+        )
+
+        if not rows:
+            empty = QLabel(
+                "Belum ada komentar.\nPilih paragraf lalu klik Komentar."
+            )
+            empty.setAlignment(Qt.AlignCenter)
+            empty.setWordWrap(True)
+            empty.setStyleSheet("color: #888; padding: 24px;")
+            self.comments_layout.insertWidget(
+                self.comments_layout.count() - 1,
+                empty,
+            )
+            self.update_actions()
+            return
+
+        for row in rows:
+            card = CommentCard(row)
+            card.goto_requested.connect(self.goto_comment)
+            card.edit_requested.connect(self.edit_comment)
+            card.toggle_requested.connect(self.toggle_comment)
+            card.delete_requested.connect(self.delete_comment)
+
+            self.comments_layout.insertWidget(
+                self.comments_layout.count() - 1,
+                card,
+            )
+
+        self.update_actions()
+
+    def goto_comment(self, comment_id: int) -> None:
+        with SessionLocal() as session:
+            comment = session.get(ReviewComment, comment_id)
+            if comment is None or comment.paragraph_index is None:
+                return
+            paragraph_index = int(comment.paragraph_index)
+
+        self.scroll_to_paragraph(paragraph_index)
+
+    def edit_comment(self, comment_id: int) -> None:
         with SessionLocal() as session:
             comment = session.get(ReviewComment, comment_id)
             if comment is None:
-                self.load_comments()
                 return
 
-            dialog = CommentDialog(
-                sections=self.current_sections,
-                comment=comment,
-                parent=self,
-            )
+            data = {
+                "category": comment.category,
+                "severity": comment.severity,
+                "content": comment.content,
+            }
+            paragraph_index = comment.paragraph_index
+            selected_text = comment.selected_text or ""
+            section = comment.section or "Awal Dokumen"
 
+        paragraph = (
+            self.paragraph_data(int(paragraph_index))
+            if paragraph_index is not None
+            else None
+        )
+
+        dialog = CommentDialog(
+            paragraph_text=paragraph["text"] if paragraph else "",
+            selected_text=selected_text,
+            section=section,
+            comment_data=data,
+            parent=self,
+        )
         if dialog.exec() != QDialog.Accepted:
             return
 
@@ -570,42 +892,34 @@ class ReviewPage(QWidget):
         with SessionLocal() as session:
             comment = session.get(ReviewComment, comment_id)
             if comment is None:
-                self.load_comments()
                 return
 
-            comment.section = payload["section"]
+            comment.category = payload["category"]
+            comment.severity = payload["severity"]
             comment.content = payload["content"]
             session.commit()
 
         self.load_comments()
 
-    def toggle_selected_status(self) -> None:
-        comment_id = self.selected_comment_id()
-        if comment_id is None:
-            return
-
+    def toggle_comment(self, comment_id: int) -> None:
         with SessionLocal() as session:
             comment = session.get(ReviewComment, comment_id)
             if comment is None:
-                self.load_comments()
                 return
 
             comment.status = (
-                "Resolved" if comment.status == "Open" else "Open"
+                "Resolved"
+                if comment.status != "Resolved"
+                else "Open"
             )
             session.commit()
 
-        self.load_comments()
+        self.load_document()
 
-    def delete_selected_comment(self) -> None:
-        comment_id = self.selected_comment_id()
-        if comment_id is None:
-            return
-
+    def delete_comment(self, comment_id: int) -> None:
         with SessionLocal() as session:
             comment = session.get(ReviewComment, comment_id)
             if comment is None:
-                self.load_comments()
                 return
 
             preview = comment.content
@@ -629,34 +943,118 @@ class ReviewPage(QWidget):
             session.delete(comment)
             session.commit()
 
-        self.load_comments()
+        self.load_document()
 
-    def update_document_actions(self) -> None:
-        has_document = self.current_document_id is not None
+    def open_original_file(self) -> None:
+        if not self.current_file_path or not self.current_file_path.exists():
+            return
+
+        opened = QDesktopServices.openUrl(
+            QUrl.fromLocalFile(str(self.current_file_path.resolve()))
+        )
+        if not opened:
+            QMessageBox.warning(
+                self,
+                "File tidak dapat dibuka",
+                "Windows tidak menemukan aplikasi untuk membuka file tersebut.",
+            )
+
+    def export_word_comments(self) -> None:
+        if (
+            self.current_document_id is None
+            or self.current_file_path is None
+        ):
+            return
+
+        if self.current_file_path.suffix.lower() != ".docx":
+            QMessageBox.information(
+                self,
+                "Export Word",
+                (
+                    "Komentar Word native hanya tersedia untuk sumber DOCX. "
+                    "Untuk PDF, komentar tetap tersimpan di aplikasi."
+                ),
+            )
+            return
+
+        with SessionLocal() as session:
+            comments = session.scalars(
+                select(ReviewComment)
+                .where(
+                    ReviewComment.document_id == self.current_document_id,
+                    ReviewComment.status != "Resolved",
+                )
+                .order_by(ReviewComment.paragraph_index.asc())
+            ).all()
+
+            export_rows = [
+                {
+                    "paragraph_index": comment.paragraph_index,
+                    "selected_text": comment.selected_text,
+                    "category": comment.category,
+                    "severity": comment.severity,
+                    "content": comment.content,
+                }
+                for comment in comments
+                if comment.paragraph_index is not None
+            ]
+
+        if not export_rows:
+            QMessageBox.information(
+                self,
+                "Tidak ada komentar aktif",
+                "Tidak ada komentar aktif untuk diekspor ke Word.",
+            )
+            return
+
+        default_name = (
+            self.current_file_path.stem + "_koreksi.docx"
+        )
+        output_path, _ = QFileDialog.getSaveFileName(
+            self,
+            "Simpan Word Berkomentar",
+            str(self.current_file_path.parent / default_name),
+            "Word Document (*.docx)",
+        )
+        if not output_path:
+            return
+
+        if not output_path.lower().endswith(".docx"):
+            output_path += ".docx"
+
+        try:
+            exported = export_docx_with_comments(
+                source_path=self.current_file_path,
+                output_path=output_path,
+                comments=export_rows,
+            )
+        except Exception as exc:
+            QMessageBox.critical(
+                self,
+                "Export gagal",
+                f"File Word berkomentar tidak dapat dibuat.\n\n{exc}",
+            )
+            return
+
+        QMessageBox.information(
+            self,
+            "Export berhasil",
+            (
+                f"{exported} komentar aktif berhasil ditanamkan ke Word.\n\n"
+                f"{output_path}\n\n"
+                "File ini dapat langsung dikembalikan ke mahasiswa."
+            ),
+        )
+
+    def update_actions(self) -> None:
         has_file = (
             self.current_file_path is not None
             and self.current_file_path.exists()
         )
+        is_docx = (
+            has_file
+            and self.current_file_path.suffix.lower() == ".docx"
+        )
 
-        self.add_comment_button.setEnabled(has_document)
-        self.open_file_button.setEnabled(has_file)
-        self.section_combo.setEnabled(has_document)
-
-    def update_comment_actions(self) -> None:
-        comment_id = self.selected_comment_id()
-        has_selection = comment_id is not None
-
-        self.edit_comment_button.setEnabled(has_selection)
-        self.toggle_status_button.setEnabled(has_selection)
-        self.delete_comment_button.setEnabled(has_selection)
-
-        if not has_selection:
-            self.toggle_status_button.setText("Tandai Selesai")
-            return
-
-        with SessionLocal() as session:
-            comment = session.get(ReviewComment, comment_id)
-            if comment and comment.status == "Resolved":
-                self.toggle_status_button.setText("Buka Kembali")
-            else:
-                self.toggle_status_button.setText("Tandai Selesai")
+        self.open_button.setEnabled(has_file)
+        self.export_button.setEnabled(bool(is_docx))
