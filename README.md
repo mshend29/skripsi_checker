@@ -110,3 +110,17 @@ item `Daftar Isi`.
 Panel dokumen menggunakan tampilan menyerupai lembar Microsoft Word: workspace abu-abu,
 lembar putih, teks hitam Times New Roman, dan paragraf tetap menjadi unit review. Border paragraf
 serta tombol `+ Tambahkan komentar` hanya tampil ketika paragraf di-hover atau sedang dipilih.
+
+
+## Preview dokumen seperti Word
+
+Untuk DOCX, halaman Koreksi tidak membangun ulang teks dengan widget Qt. Dokumen dirender
+menjadi preview PDF lokal menggunakan Microsoft Word pada Windows. Jika Microsoft Word tidak
+tersedia, aplikasi mencoba LibreOffice sebagai fallback. Preview tersebut kemudian ditampilkan
+per halaman dengan jarak antarhalaman, sehingga page break, margin, tabel, gambar, header/footer,
+dan format dokumen mengikuti hasil render dokumen asli.
+
+Pada halaman preview, aplikasi memasang overlay komentar di atas paragraf teks yang berhasil
+dipetakan. Overlay tidak terlihat dalam kondisi normal; saat hover, area paragraf diberi border
+dan tombol komentar muncul. Preview PDF disimpan sebagai cache lokal di `storage/previews/`
+dan tidak masuk Git.
