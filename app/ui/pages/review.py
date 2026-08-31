@@ -3,7 +3,7 @@ from __future__ import annotations
 from pathlib import Path
 
 from PySide6.QtCore import Qt, QUrl, Signal
-from PySide6.QtGui import QDesktopServices, QFont
+from PySide6.QtGui import QDesktopServices, QPixmap
 from PySide6.QtWidgets import (
     QComboBox,
     QDialog,
@@ -29,9 +29,12 @@ from sqlalchemy.orm import selectinload
 from app.database import SessionLocal
 from app.models import ReviewComment, Thesis, ThesisDocument
 from app.services.document_service import (
+    ensure_preview_pdf,
     export_docx_with_comments,
     extract_review_paragraphs,
     extract_review_structure,
+    map_review_paragraphs_to_preview,
+    render_preview_pages,
     resolve_storage_path,
 )
 
@@ -66,128 +69,78 @@ STATUS_LABELS = {
 }
 
 
-class ParagraphCard(QFrame):
+class PreviewParagraphOverlay(QFrame):
     comment_requested = Signal(int, str)
 
     def __init__(
         self,
-        paragraph: dict,
+        anchor: dict,
         comment_count: int = 0,
         parent=None,
     ):
         super().__init__(parent)
 
-        self.paragraph = paragraph
+        self.anchor = anchor
         self._hovered = False
         self._highlighted = False
 
-        self.setObjectName("paragraphCard")
+        self.setObjectName("previewParagraphOverlay")
         self.setMouseTracking(True)
-        self.setFrameShape(QFrame.NoFrame)
+        self.setAttribute(Qt.WA_StyledBackground, True)
 
         layout = QHBoxLayout(self)
-        layout.setContentsMargins(10, 4, 8, 4)
-        layout.setSpacing(8)
-
-        self.text_view = QTextEdit()
-        self.text_view.setReadOnly(True)
-        self.text_view.setFrameShape(QFrame.NoFrame)
-        self.text_view.setVerticalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
-        self.text_view.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
-        self.text_view.setPlainText(paragraph["text"])
-        self.text_view.setStyleSheet(
-            "QTextEdit {"
-            " background: transparent;"
-            " color: #000000;"
-            " border: none;"
-            " padding: 0px;"
-            " selection-background-color: #cfe8ff;"
-            " selection-color: #000000;"
-            "}"
-        )
-
-        font = QFont("Times New Roman", 12)
-        if paragraph["is_heading"]:
-            font.setBold(True)
-        self.text_view.setFont(font)
-
-        heading_text = paragraph["text"].strip()
-        center_heading = (
-            heading_text.upper().startswith("BAB ")
-            or (
-                paragraph["is_heading"]
-                and heading_text.upper() == heading_text
-                and len(heading_text) <= 100
-            )
-        )
-
-        if center_heading:
-            self.text_view.setAlignment(Qt.AlignCenter)
-        elif paragraph["is_heading"]:
-            self.text_view.setAlignment(Qt.AlignLeft)
-        else:
-            self.text_view.setAlignment(Qt.AlignJustify)
-
-        estimated_lines = max(1, (len(paragraph["text"]) // 82) + 1)
-        base_height = 34 if paragraph["is_heading"] else 28
-        self.text_view.setFixedHeight(
-            min(250, base_height + estimated_lines * 22)
-        )
-        layout.addWidget(self.text_view, 1)
-
-        actions = QVBoxLayout()
-        actions.setContentsMargins(0, 0, 0, 0)
-        actions.setSpacing(5)
+        layout.setContentsMargins(4, 2, 4, 2)
+        layout.addStretch()
 
         if comment_count:
-            badge = QLabel(f"{comment_count}")
+            badge = QLabel(str(comment_count))
+            badge.setFixedSize(22, 18)
             badge.setAlignment(Qt.AlignCenter)
-            badge.setFixedSize(24, 20)
             badge.setToolTip(f"{comment_count} catatan aktif")
             badge.setStyleSheet(
-                "background: #f1f1f1; color: #333333; "
-                "border-radius: 9px; font-size: 10px;"
+                "background: rgba(255,255,255,235);"
+                "color: #111111;"
+                "border: 1px solid #bdbdbd;"
+                "border-radius: 8px;"
+                "font-size: 9px;"
             )
-            actions.addWidget(badge, 0, Qt.AlignRight)
+            layout.addWidget(badge)
 
-        self.comment_button = QPushButton("+ Tambahkan komentar")
+        self.comment_button = QPushButton("+ Komentar")
         self.comment_button.setCursor(Qt.PointingHandCursor)
         self.comment_button.setStyleSheet(
             "QPushButton {"
-            " background: #ffffff;"
+            " background: rgba(255,255,255,245);"
             " color: #111111;"
-            " border: 1px solid #bcbcbc;"
-            " border-radius: 5px;"
-            " padding: 5px 8px;"
-            " font-size: 11px;"
+            " border: 1px solid #a9a9a9;"
+            " border-radius: 4px;"
+            " padding: 4px 7px;"
+            " font-size: 10px;"
             "}"
-            "QPushButton:hover { background: #f3f3f3; }"
+            "QPushButton:hover { background: #f2f2f2; }"
         )
         self.comment_button.clicked.connect(self.request_comment)
         self.comment_button.hide()
-
-        actions.addWidget(self.comment_button, 0, Qt.AlignRight)
-        actions.addStretch()
-        layout.addLayout(actions)
+        layout.addWidget(self.comment_button)
 
         self._apply_style()
 
     def _apply_style(self) -> None:
         if self._highlighted:
-            border = "2px solid #7a7a7a"
-            background = "#fffde9"
+            border = "2px solid rgba(90,90,90,220)"
+            background = "rgba(255,248,190,55)"
         elif self._hovered:
-            border = "1px solid #b8b8b8"
-            background = "#ffffff"
+            border = "1px solid rgba(110,110,110,180)"
+            background = "rgba(255,255,255,20)"
         else:
-            border = "1px solid transparent"
-            background = "#ffffff"
+            border = "1px solid rgba(0,0,0,0)"
+            background = "rgba(255,255,255,0)"
 
         self.setStyleSheet(
-            "QFrame#paragraphCard {"
-            f" background: {background};"
-            f" border: {border};"
-            " border-radius: 4px;"
+            "QFrame#previewParagraphOverlay {"
+            f"border: {border};"
+            f"background: {background};"
+            "border-radius: 3px;"
             "}"
         )
 
@@ -209,14 +162,89 @@ class ParagraphCard(QFrame):
         super().leaveEvent(event)
 
     def request_comment(self) -> None:
-        selected_text = self.text_view.textCursor().selectedText().strip()
-        if not selected_text:
-            selected_text = self.paragraph["text"]
-
         self.comment_requested.emit(
-            int(self.paragraph["paragraph_index"]),
-            selected_text,
+            int(self.anchor["paragraph_index"]),
+            self.anchor.get("text") or "",
         )
+
+
+class PreviewPageWidget(QFrame):
+    comment_requested = Signal(int, str)
+
+    def __init__(
+        self,
+        page_data: dict,
+        anchors: list[dict],
+        comment_counts: dict[int, int],
+        parent=None,
+    ):
+        super().__init__(parent)
+
+        self.overlay_widgets: dict[int, PreviewParagraphOverlay] = {}
+
+        pixmap = QPixmap()
+        pixmap.loadFromData(page_data["png"])
+
+        self.setObjectName("previewPage")
+        self.setFixedSize(
+            int(page_data["image_width"]) + 2,
+            int(page_data["image_height"]) + 2,
+        )
+        self.setStyleSheet(
+            "QFrame#previewPage {"
+            " background: #ffffff;"
+            " border: 1px solid #bdbdbd;"
+            "}"
+        )
+
+        image = QLabel(self)
+        image.setPixmap(pixmap)
+        image.setGeometry(
+            1,
+            1,
+            int(page_data["image_width"]),
+            int(page_data["image_height"]),
+        )
+        image.lower()
+
+        scale_x = (
+            float(page_data["image_width"])
+            / float(page_data["page_width"])
+        )
+        scale_y = (
+            float(page_data["image_height"])
+            / float(page_data["page_height"])
+        )
+
+        for anchor in anchors:
+            x0, y0, x1, y1 = anchor["bbox"]
+
+            left = max(1, int(x0 * scale_x) + 1)
+            top = max(1, int(y0 * scale_y) + 1)
+            width = max(44, int((x1 - x0) * scale_x))
+            height = max(24, int((y1 - y0) * scale_y))
+
+            right_limit = int(page_data["image_width"]) - 2
+            bottom_limit = int(page_data["image_height"]) - 2
+
+            if left + width > right_limit:
+                width = max(20, right_limit - left)
+            if top + height > bottom_limit:
+                height = max(20, bottom_limit - top)
+
+            paragraph_index = int(anchor["paragraph_index"])
+            overlay = PreviewParagraphOverlay(
+                anchor=anchor,
+                comment_count=comment_counts.get(paragraph_index, 0),
+                parent=self,
+            )
+            overlay.setGeometry(left, top, width, height)
+            overlay.comment_requested.connect(
+                self.comment_requested.emit
+            )
+            overlay.raise_()
+
+            self.overlay_widgets[paragraph_index] = overlay
 
 
 class CommentDialog(QDialog):
@@ -244,16 +272,20 @@ class CommentDialog(QDialog):
         location.setWordWrap(True)
         layout.addWidget(location)
 
-        quote = QLabel(
-            f'“{selected_text[:500]}{"…" if len(selected_text) > 500 else ""}”'
+        quote_label = QLabel("Kutipan / teks yang dikoreksi")
+        quote_label.setStyleSheet("font-weight: 600;")
+        layout.addWidget(quote_label)
+
+        self.selected_text_input = QTextEdit()
+        self.selected_text_input.setPlainText(selected_text)
+        self.selected_text_input.setMaximumHeight(95)
+        self.selected_text_input.setPlaceholderText(
+            "Kutipan paragraf yang menjadi fokus komentar."
         )
-        quote.setWordWrap(True)
-        quote.setTextInteractionFlags(Qt.TextSelectableByMouse)
-        quote.setStyleSheet(
-            "background: #f5f5f5; border-left: 3px solid #999; "
-            "padding: 10px; color: #555;"
+        self.selected_text_input.setStyleSheet(
+            "background: #f7f7f7; color: #111111;"
         )
-        layout.addWidget(quote)
+        layout.addWidget(self.selected_text_input)
 
         form = QFormLayout()
 
@@ -300,6 +332,7 @@ class CommentDialog(QDialog):
 
     def payload(self) -> dict:
         return {
+            "selected_text": self.selected_text_input.toPlainText().strip(),
             "category": self.category.currentText(),
             "severity": self.severity.currentText(),
             "content": self.content.toPlainText().strip(),
@@ -422,7 +455,7 @@ class ReviewPage(QWidget):
         self.current_document_id: int | None = None
         self.current_file_path: Path | None = None
         self.current_paragraphs: list[dict] = []
-        self.paragraph_widgets: dict[int, ParagraphCard] = {}
+        self.paragraph_widgets: dict[int, PreviewParagraphOverlay] = {}
         self.highlighted_paragraph_index: int | None = None
         self._loading = False
 
@@ -583,7 +616,7 @@ class ReviewPage(QWidget):
     def build_document_panel(self) -> QWidget:
         panel = QFrame()
         panel.setFrameShape(QFrame.NoFrame)
-        panel.setStyleSheet("background: #e7e7e7;")
+        panel.setStyleSheet("background: #d9d9d9;")
 
         layout = QVBoxLayout(panel)
         layout.setContentsMargins(0, 0, 0, 0)
@@ -592,38 +625,18 @@ class ReviewPage(QWidget):
         self.document_scroll.setWidgetResizable(True)
         self.document_scroll.setFrameShape(QFrame.NoFrame)
         self.document_scroll.setStyleSheet(
-            "QScrollArea { background: #e7e7e7; border: none; }"
+            "QScrollArea { background: #d9d9d9; border: none; }"
             "QScrollBar:vertical { width: 12px; }"
         )
 
         self.document_workspace = QWidget()
-        self.document_workspace.setStyleSheet("background: #e7e7e7;")
-        workspace_layout = QVBoxLayout(self.document_workspace)
-        workspace_layout.setContentsMargins(30, 28, 30, 40)
-        workspace_layout.setSpacing(0)
+        self.document_workspace.setStyleSheet("background: #d9d9d9;")
 
-        self.document_page = QFrame()
-        self.document_page.setObjectName("wordPage")
-        self.document_page.setMinimumWidth(660)
-        self.document_page.setMaximumWidth(860)
-        self.document_page.setStyleSheet(
-            "QFrame#wordPage {"
-            " background: #ffffff;"
-            " border: 1px solid #cfcfcf;"
-            "}"
-        )
-
-        self.document_layout = QVBoxLayout(self.document_page)
-        self.document_layout.setContentsMargins(64, 58, 64, 70)
-        self.document_layout.setSpacing(2)
+        self.document_layout = QVBoxLayout(self.document_workspace)
+        self.document_layout.setContentsMargins(26, 28, 26, 42)
+        self.document_layout.setSpacing(22)
+        self.document_layout.setAlignment(Qt.AlignHCenter | Qt.AlignTop)
         self.document_layout.addStretch()
-
-        workspace_layout.addWidget(
-            self.document_page,
-            0,
-            Qt.AlignHCenter | Qt.AlignTop,
-        )
-        workspace_layout.addStretch()
 
         self.document_scroll.setWidget(self.document_workspace)
         layout.addWidget(self.document_scroll)
@@ -793,30 +806,50 @@ class ReviewPage(QWidget):
                 paragraphs=paragraphs,
             )
 
+            preview_pdf = ensure_preview_pdf(file_path)
+            preview_pages = render_preview_pages(
+                preview_pdf,
+                dpi=120,
+            )
+            anchors = map_review_paragraphs_to_preview(
+                file_path,
+                preview_pdf,
+                paragraphs=paragraphs,
+            )
+
             self.current_file_path = file_path
             self.current_paragraphs = paragraphs
 
             comment_counts = self.comment_counts_by_paragraph()
 
-            for paragraph in paragraphs:
-                paragraph_index = int(paragraph["paragraph_index"])
+            anchors_by_page: dict[int, list[dict]] = {}
+            for anchor in anchors:
+                anchors_by_page.setdefault(
+                    int(anchor["page_index"]),
+                    [],
+                ).append(anchor)
 
-                card = ParagraphCard(
-                    paragraph,
-                    comment_count=comment_counts.get(
-                        paragraph_index,
-                        0,
-                    ),
+            for page_data in preview_pages:
+                page_index = int(page_data["page_index"])
+
+                page_widget = PreviewPageWidget(
+                    page_data=page_data,
+                    anchors=anchors_by_page.get(page_index, []),
+                    comment_counts=comment_counts,
                 )
-                card.comment_requested.connect(
+                page_widget.comment_requested.connect(
                     self.add_comment_for_paragraph
                 )
 
                 self.document_layout.insertWidget(
                     self.document_layout.count() - 1,
-                    card,
+                    page_widget,
+                    0,
+                    Qt.AlignHCenter,
                 )
-                self.paragraph_widgets[paragraph_index] = card
+                self.paragraph_widgets.update(
+                    page_widget.overlay_widgets
+                )
 
             self.populate_structure(structure)
 
@@ -828,12 +861,13 @@ class ReviewPage(QWidget):
                 f'{document_meta["student"]}  •  '
                 f'V{document_meta["version"]} {kind}  •  '
                 f'{document_meta["uploaded_at"].strftime("%d-%m-%Y %H:%M")}  •  '
-                f'{file_path.name}'
+                f'{file_path.name}  •  '
+                f'{len(preview_pages)} halaman'
             )
 
         except Exception as exc:
             self.version_info.setText(
-                f"Dokumen tidak dapat dibaca: {exc}"
+                f"Dokumen tidak dapat dirender: {exc}"
             )
 
         self.load_comments()
@@ -915,7 +949,7 @@ class ReviewPage(QWidget):
                     document_id=self.current_document_id,
                     section=paragraph.get("section") or "Awal Dokumen",
                     paragraph_index=paragraph_index,
-                    selected_text=selected_text,
+                    selected_text=payload["selected_text"] or selected_text,
                     category=payload["category"],
                     severity=payload["severity"],
                     content=payload["content"],
@@ -1068,6 +1102,9 @@ class ReviewPage(QWidget):
             if comment is None:
                 return
 
+            comment.selected_text = (
+                payload["selected_text"] or comment.selected_text
+            )
             comment.category = payload["category"]
             comment.severity = payload["severity"]
             comment.content = payload["content"]
