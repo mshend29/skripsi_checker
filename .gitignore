@@ -18,3 +18,4 @@ storage/revisions/*
 storage/finals/*
 !storage/finals/.gitkeep
 storage/previews/*
+storage/html_previews/*
