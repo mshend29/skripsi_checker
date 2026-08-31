@@ -759,25 +759,94 @@ def _pdf_text_blocks(preview_pdf: Path) -> list[dict]:
 
     with pymupdf.open(preview_pdf) as document:
         for page_index, page in enumerate(document):
+            words = page.get_text("words")
+            page_words = [
+                {
+                    "x0": float(word[0]),
+                    "y0": float(word[1]),
+                    "x1": float(word[2]),
+                    "y1": float(word[3]),
+                    "text": str(word[4]),
+                    "block_no": int(word[5]),
+                    "line_no": int(word[6]),
+                    "word_no": int(word[7]),
+                }
+                for word in words
+            ]
+
             for block in page.get_text("blocks"):
                 text_value = _normalize_text(str(block[4]))
                 if not text_value:
                     continue
 
+                bbox = (
+                    float(block[0]),
+                    float(block[1]),
+                    float(block[2]),
+                    float(block[3]),
+                )
+                x0, y0, x1, y1 = bbox
+
+                block_words = [
+                    word
+                    for word in page_words
+                    if (
+                        ((word["x0"] + word["x1"]) / 2) >= x0 - 1
+                        and ((word["x0"] + word["x1"]) / 2) <= x1 + 1
+                        and ((word["y0"] + word["y1"]) / 2) >= y0 - 1
+                        and ((word["y0"] + word["y1"]) / 2) <= y1 + 1
+                    )
+                ]
+
                 result.append(
                     {
                         "page_index": page_index,
-                        "bbox": (
-                            float(block[0]),
-                            float(block[1]),
-                            float(block[2]),
-                            float(block[3]),
-                        ),
+                        "bbox": bbox,
                         "text": text_value,
+                        "words": block_words,
                     }
                 )
 
     return result
+
+
+def _union_bbox(blocks: list[dict]) -> tuple[float, float, float, float]:
+    return (
+        min(block["bbox"][0] for block in blocks),
+        min(block["bbox"][1] for block in blocks),
+        max(block["bbox"][2] for block in blocks),
+        max(block["bbox"][3] for block in blocks),
+    )
+
+
+def _merge_words(blocks: list[dict]) -> list[dict]:
+    words: list[dict] = []
+    seen: set[tuple] = set()
+
+    for block in blocks:
+        for word in block.get("words") or []:
+            key = (
+                round(float(word["x0"]), 2),
+                round(float(word["y0"]), 2),
+                round(float(word["x1"]), 2),
+                round(float(word["y1"]), 2),
+                word["text"],
+            )
+            if key in seen:
+                continue
+            seen.add(key)
+            words.append(dict(word))
+
+    words.sort(
+        key=lambda word: (
+            int(word.get("block_no", 0)),
+            int(word.get("line_no", 0)),
+            int(word.get("word_no", 0)),
+            float(word["y0"]),
+            float(word["x0"]),
+        )
+    )
+    return words
 
 
 def _text_similarity(left: str, right: str) -> float:
@@ -816,6 +885,7 @@ def map_review_paragraphs_to_preview(
                     "paragraph_index": int(row["paragraph_index"]),
                     "page_index": int(block["page_index"]),
                     "bbox": block["bbox"],
+                    "words": block.get("words") or [],
                     "text": row["text"],
                     "section": row.get("section") or "",
                 }
@@ -830,33 +900,60 @@ def map_review_paragraphs_to_preview(
         if len(text_value) < 2:
             continue
 
-        best_index: int | None = None
+        best_start: int | None = None
+        best_end: int | None = None
         best_score = 0.0
 
-        window_end = min(len(blocks), search_start + 35)
-        for index in range(search_start, window_end):
-            score = _text_similarity(text_value, blocks[index]["text"])
-            if score > best_score:
-                best_score = score
-                best_index = index
+        window_end = min(len(blocks), search_start + 45)
 
-            if score >= 0.96:
-                break
+        for start_index in range(search_start, window_end):
+            start_page = int(blocks[start_index]["page_index"])
+            combined_parts: list[str] = []
 
-        if best_index is None or best_score < 0.48:
+            for end_index in range(
+                start_index,
+                min(window_end, start_index + 8),
+            ):
+                if int(blocks[end_index]["page_index"]) != start_page:
+                    break
+
+                combined_parts.append(blocks[end_index]["text"])
+                combined_text = " ".join(combined_parts)
+                score = _text_similarity(text_value, combined_text)
+
+                length_ratio = (
+                    min(len(_normalize_text(text_value)), len(_normalize_text(combined_text)))
+                    / max(len(_normalize_text(text_value)), len(_normalize_text(combined_text)))
+                )
+                adjusted_score = score * (0.82 + 0.18 * length_ratio)
+
+                if adjusted_score > best_score:
+                    best_score = adjusted_score
+                    best_start = start_index
+                    best_end = end_index
+
+                if score >= 0.985 and length_ratio >= 0.9:
+                    break
+
+        if (
+            best_start is None
+            or best_end is None
+            or best_score < 0.46
+        ):
             continue
 
-        block = blocks[best_index]
-        anchors.append(
-            {
-                "paragraph_index": int(row["paragraph_index"]),
-                "page_index": int(block["page_index"]),
-                "bbox": block["bbox"],
-                "text": text_value,
-                "section": row.get("section") or "",
-            }
-        )
+        matched_blocks = blocks[best_start : best_end + 1]
+        anchor = {
+            "paragraph_index": int(row["paragraph_index"]),
+            "page_index": int(matched_blocks[0]["page_index"]),
+            "bbox": _union_bbox(matched_blocks),
+            "words": _merge_words(matched_blocks),
+            "text": text_value,
+            "section": row.get("section") or "",
+        }
+        anchors.append(anchor)
 
-        search_start = max(search_start, best_index)
+        search_start = max(search_start, best_end + 1)
 
     return anchors
+
