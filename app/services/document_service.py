@@ -17,6 +17,19 @@ DOCUMENT_FOLDERS = {
     "final": STORAGE_DIR / "finals",
 }
 
+MAJOR_SECTION_NAMES = {
+    "ABSTRAK",
+    "ABSTRACT",
+    "DAFTAR PUSTAKA",
+    "REFERENCES",
+    "LAMPIRAN",
+    "APPENDIX",
+}
+
+
+def _normalize_text(value: str) -> str:
+    return re.sub(r"\s+", " ", value or "").strip()
+
 
 def extract_text(file_path: str | Path) -> str:
     path = Path(file_path)
@@ -24,7 +37,11 @@ def extract_text(file_path: str | Path) -> str:
 
     if suffix == ".docx":
         document = DocxDocument(path)
-        return "\n".join(p.text for p in document.paragraphs if p.text.strip())
+        return "\n".join(
+            paragraph.text
+            for paragraph in document.paragraphs
+            if paragraph.text.strip()
+        )
 
     if suffix == ".pdf":
         with pymupdf.open(path) as document:
@@ -34,29 +51,14 @@ def extract_text(file_path: str | Path) -> str:
 
 
 def extract_sections(text: str) -> list[str]:
-    lines = [re.sub(r"\s+", " ", line).strip() for line in text.splitlines()]
+    lines = [_normalize_text(line) for line in text.splitlines()]
     sections: list[str] = []
     seen: set[str] = set()
-
-    patterns = [
-        re.compile(r"^BAB\s+[IVXLCDM]+(?:\s*[-.:]?\s*.*)?$", re.IGNORECASE),
-        re.compile(r"^\d+(?:\.\d+){1,3}\s+.+$"),
-    ]
 
     for line in lines:
         if not line or len(line) > 180:
             continue
-
-        is_heading = any(pattern.match(line) for pattern in patterns)
-
-        if not is_heading:
-            words = line.split()
-            if 1 < len(words) <= 10 and len(line) <= 100:
-                letters = [char for char in line if char.isalpha()]
-                if letters and line.upper() == line:
-                    is_heading = True
-
-        if not is_heading:
+        if not _heading_label(line):
             continue
 
         key = line.casefold()
@@ -73,7 +75,7 @@ def extract_sections(text: str) -> list[str]:
 
 
 def detect_title(text: str) -> str:
-    lines = [re.sub(r"\s+", " ", line).strip() for line in text.splitlines()]
+    lines = [_normalize_text(line) for line in text.splitlines()]
     lines = [line for line in lines if line]
 
     candidates: list[str] = []
@@ -84,6 +86,7 @@ def detect_title(text: str) -> str:
         "tugas akhir",
         "bab i",
         "pendahuluan",
+        "daftar isi",
     }
 
     for line in lines[:50]:
@@ -158,93 +161,382 @@ def import_proposal(
     )
 
 
-
 def _heading_label(text: str, style_name: str = "") -> bool:
-    normalized = re.sub(r"\s+", " ", text).strip()
+    normalized = _normalize_text(text)
     if not normalized:
         return False
 
-    if style_name.lower().startswith("heading"):
+    style_lower = style_name.lower()
+    if style_lower.startswith("heading"):
         return True
 
     patterns = [
-        re.compile(r"^BAB\s+[IVXLCDM]+(?:\s*[-.:]?\s*.*)?$", re.IGNORECASE),
+        re.compile(
+            r"^BAB\s+(?:[IVXLCDM]+|\d+)(?:\s*[-.:]?\s*.*)?$",
+            re.IGNORECASE,
+        ),
         re.compile(r"^\d+(?:\.\d+){1,3}\s+.+$"),
     ]
     if any(pattern.match(normalized) for pattern in patterns):
         return True
 
-    words = normalized.split()
-    letters = [char for char in normalized if char.isalpha()]
-    return bool(
-        1 < len(words) <= 10
-        and len(normalized) <= 100
-        and letters
-        and normalized.upper() == normalized
+    return normalized.upper() in MAJOR_SECTION_NAMES
+
+
+def _chapter_key(text: str) -> str | None:
+    normalized = _normalize_text(text)
+    match = re.match(
+        r"^(BAB\s+(?:[IVXLCDM]+|\d+))\b",
+        normalized,
+        re.IGNORECASE,
     )
+    if match:
+        return match.group(1).upper()
+    return None
+
+
+def _numbering_key(text: str) -> str | None:
+    normalized = _normalize_text(text)
+    match = re.match(r"^(\d+(?:\.\d+){1,3})\b", normalized)
+    return match.group(1) if match else None
+
+
+def _structure_level(text: str, style_name: str = "") -> int:
+    style_match = re.search(r"(\d+)", style_name or "")
+    if style_name.lower().startswith("toc") and style_match:
+        return max(1, min(4, int(style_match.group(1))))
+
+    if _chapter_key(text):
+        return 1
+
+    numbering = _numbering_key(text)
+    if numbering:
+        return min(4, numbering.count(".") + 1)
+
+    return 1
+
+
+def _looks_like_toc_entry(raw_text: str, style_name: str = "") -> bool:
+    stripped = (raw_text or "").strip()
+    if not stripped:
+        return False
+
+    if style_name.lower().startswith("toc"):
+        return True
+
+    if "\t" in stripped:
+        return True
+
+    if re.search(r"\.{3,}\s*(?:\d+|[ivxlcdm]+)\s*$", stripped, re.I):
+        return True
+
+    if (
+        (_chapter_key(stripped) or _numbering_key(stripped))
+        and re.search(r"\s+(?:\d+|[ivxlcdm]+)\s*$", stripped, re.I)
+    ):
+        return True
+
+    return False
+
+
+def _clean_toc_entry(raw_text: str) -> str:
+    value = (raw_text or "").replace("\xa0", " ").strip()
+    value = re.sub(
+        r"\s*(?:\.{2,}|\t+)\s*(?:\d+|[ivxlcdm]+)\s*$",
+        "",
+        value,
+        flags=re.IGNORECASE,
+    )
+    value = re.sub(
+        r"(?<=\D)\s{2,}(?:\d+|[ivxlcdm]+)\s*$",
+        "",
+        value,
+        flags=re.IGNORECASE,
+    )
+    return _normalize_text(value)
+
+
+def _find_toc_bounds(rows: list[dict]) -> tuple[int | None, int | None]:
+    toc_start: int | None = None
+
+    for position, row in enumerate(rows):
+        if row["text"].casefold() == "daftar isi":
+            toc_start = position
+            break
+
+    if toc_start is None:
+        return None, None
+
+    toc_end = toc_start
+    saw_entry = False
+
+    for position in range(toc_start + 1, len(rows)):
+        row = rows[position]
+        raw_text = row.get("raw_text") or row["text"]
+        style_name = row.get("style_name") or ""
+
+        if _looks_like_toc_entry(raw_text, style_name):
+            saw_entry = True
+            toc_end = position
+            continue
+
+        if not saw_entry:
+            if position - toc_start <= 3:
+                toc_end = position
+                continue
+            break
+
+        if _chapter_key(row["text"]) or (
+            style_name.lower().startswith("heading")
+            and not style_name.lower().startswith("toc")
+        ):
+            break
+
+        if position - toc_end <= 2 and len(row["text"]) < 120:
+            toc_end = position
+            continue
+
+        break
+
+    return toc_start, toc_end
+
+
+def _match_structure_target(
+    label: str,
+    rows: list[dict],
+    start_position: int,
+) -> int | None:
+    chapter_key = _chapter_key(label)
+    numbering_key = _numbering_key(label)
+    normalized_label = _normalize_text(label).casefold()
+
+    for row in rows[start_position:]:
+        text = row["text"]
+        text_lower = text.casefold()
+
+        if chapter_key and _chapter_key(text) == chapter_key:
+            return int(row["paragraph_index"])
+
+        if numbering_key and _numbering_key(text) == numbering_key:
+            return int(row["paragraph_index"])
+
+        if normalized_label == text_lower:
+            return int(row["paragraph_index"])
+
+        if len(normalized_label) > 8 and (
+            normalized_label in text_lower or text_lower in normalized_label
+        ):
+            return int(row["paragraph_index"])
+
+    return None
+
+
+def _build_tree(entries: list[dict]) -> list[dict]:
+    roots: list[dict] = []
+    stack: list[tuple[int, dict]] = []
+
+    for entry in entries:
+        node = {
+            "label": entry["label"],
+            "paragraph_index": entry.get("paragraph_index"),
+            "children": [],
+        }
+        level = max(1, int(entry.get("level", 1)))
+
+        while stack and stack[-1][0] >= level:
+            stack.pop()
+
+        if stack:
+            stack[-1][1]["children"].append(node)
+        else:
+            roots.append(node)
+
+        stack.append((level, node))
+
+    return roots
 
 
 def extract_review_paragraphs(file_path: str | Path) -> list[dict]:
     path = Path(file_path)
     suffix = path.suffix.lower()
-    result: list[dict] = []
-    current_section = "Awal Dokumen"
+    rows: list[dict] = []
 
     if suffix == ".docx":
         document = DocxDocument(path)
         for source_index, paragraph in enumerate(document.paragraphs):
-            text_value = re.sub(r"\s+", " ", paragraph.text).strip()
+            raw_text = paragraph.text.strip()
+            text_value = _normalize_text(raw_text)
             if not text_value:
                 continue
 
             style_name = paragraph.style.name if paragraph.style else ""
-            is_heading = _heading_label(text_value, style_name)
-
-            if is_heading:
-                current_section = text_value
-
-            result.append(
+            rows.append(
                 {
                     "paragraph_index": source_index,
-                    "display_index": len(result) + 1,
+                    "display_index": len(rows) + 1,
                     "text": text_value,
-                    "section": current_section,
+                    "raw_text": raw_text,
+                    "section": "Halaman Awal / Halaman Judul",
                     "style_name": style_name,
-                    "is_heading": is_heading,
+                    "is_heading": _heading_label(text_value, style_name),
                 }
             )
 
-        return result
-
-    if suffix == ".pdf":
+    elif suffix == ".pdf":
         with pymupdf.open(path) as document:
             source_index = 0
             for page_number, page in enumerate(document, start=1):
                 blocks = page.get_text("blocks")
                 for block in blocks:
-                    text_value = re.sub(r"\s+", " ", block[4]).strip()
+                    raw_text = str(block[4]).strip()
+                    text_value = _normalize_text(raw_text)
                     if not text_value:
                         continue
 
-                    is_heading = _heading_label(text_value)
-                    if is_heading:
-                        current_section = text_value
-
-                    result.append(
+                    rows.append(
                         {
                             "paragraph_index": source_index,
-                            "display_index": len(result) + 1,
+                            "display_index": len(rows) + 1,
                             "text": text_value,
-                            "section": current_section,
+                            "raw_text": raw_text,
+                            "section": "Halaman Awal / Halaman Judul",
                             "style_name": f"PDF halaman {page_number}",
-                            "is_heading": is_heading,
+                            "is_heading": _heading_label(text_value),
                         }
                     )
                     source_index += 1
+    else:
+        raise ValueError(
+            "Format dokumen belum didukung. Gunakan DOCX atau PDF."
+        )
 
-        return result
+    toc_start, toc_end = _find_toc_bounds(rows)
+    current_section = "Halaman Awal / Halaman Judul"
 
-    raise ValueError("Format dokumen belum didukung. Gunakan DOCX atau PDF.")
+    for position, row in enumerate(rows):
+        if toc_start is not None and toc_end is not None:
+            if toc_start <= position <= toc_end:
+                row["section"] = "Daftar Isi"
+                continue
+            if position < toc_start:
+                row["section"] = "Halaman Awal / Halaman Judul"
+                continue
+
+        if row["is_heading"]:
+            current_section = row["text"]
+
+        row["section"] = current_section
+
+    return rows
+
+
+def extract_review_structure(
+    file_path: str | Path,
+    paragraphs: list[dict] | None = None,
+) -> list[dict]:
+    rows = paragraphs or extract_review_paragraphs(file_path)
+    if not rows:
+        return []
+
+    roots: list[dict] = [
+        {
+            "label": "Halaman Awal / Halaman Judul",
+            "paragraph_index": int(rows[0]["paragraph_index"]),
+            "children": [],
+        }
+    ]
+
+    toc_start, toc_end = _find_toc_bounds(rows)
+    entries: list[dict] = []
+
+    if toc_start is not None and toc_end is not None:
+        roots.append(
+            {
+                "label": "Daftar Isi",
+                "paragraph_index": int(rows[toc_start]["paragraph_index"]),
+                "children": [],
+            }
+        )
+
+        search_start = min(len(rows), toc_end + 1)
+
+        for row in rows[toc_start + 1 : toc_end + 1]:
+            raw_text = row.get("raw_text") or row["text"]
+            style_name = row.get("style_name") or ""
+            if not _looks_like_toc_entry(raw_text, style_name):
+                continue
+
+            label = _clean_toc_entry(raw_text)
+            if not label:
+                continue
+
+            label_folded = label.casefold()
+            if label_folded in {
+                "daftar isi",
+                "halaman awal",
+                "halaman judul",
+            }:
+                continue
+
+            if not (
+                _chapter_key(label)
+                or _numbering_key(label)
+                or label.upper() in MAJOR_SECTION_NAMES
+            ):
+                continue
+
+            entries.append(
+                {
+                    "label": label,
+                    "level": _structure_level(label, style_name),
+                    "paragraph_index": _match_structure_target(
+                        label,
+                        rows,
+                        search_start,
+                    ),
+                }
+            )
+
+        if entries:
+            roots.extend(_build_tree(entries))
+            return roots
+
+    fallback_entries: list[dict] = []
+    start_position = (toc_end + 1) if toc_end is not None else 0
+
+    for row in rows[start_position:]:
+        label = row["text"]
+        if label.casefold() == "daftar isi":
+            if not any(root["label"] == "Daftar Isi" for root in roots):
+                roots.append(
+                    {
+                        "label": "Daftar Isi",
+                        "paragraph_index": int(row["paragraph_index"]),
+                        "children": [],
+                    }
+                )
+            continue
+
+        if not (
+            _chapter_key(label)
+            or _numbering_key(label)
+            or label.upper() in MAJOR_SECTION_NAMES
+        ):
+            continue
+
+        fallback_entries.append(
+            {
+                "label": label,
+                "level": _structure_level(
+                    label,
+                    row.get("style_name") or "",
+                ),
+                "paragraph_index": int(row["paragraph_index"]),
+            }
+        )
+
+    roots.extend(_build_tree(fallback_entries))
+    return roots
 
 
 def export_docx_with_comments(
@@ -284,9 +576,7 @@ def export_docx_with_comments(
         selected_text = (item.get("selected_text") or "").strip()
         comment_text = (item.get("content") or "").strip()
 
-        parts = [
-            f"[{severity}] [{category}]",
-        ]
+        parts = [f"[{severity}] [{category}]"]
         if selected_text and selected_text != paragraph.text.strip():
             parts.append(f'Kutipan: "{selected_text}"')
         parts.append(comment_text)
